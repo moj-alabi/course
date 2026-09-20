@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 09 - Detecting Abnormal Traffic | Shef Labs</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header class="site-header">
+  <a class="logo" href="index.html">
+    <div class="logo-mark"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
+    <div><div class="logo-text">Shef<span>Labs</span></div><div class="header-subtitle">Cyber Academy</div></div>
+  </a>
+  <div style="font-size:0.85rem; color:#888;">Packet Forensics and Network Telemetry</div>
+</header>
+<nav class="chapter-nav">
+  <a class="nav-home" href="index.html">Home</a>
+  <a href="09-packets-to-evidence.html">&larr; Chapter 08</a>
+  <span class="chapter-nav-spacer"></span>
+  <span class="chapter-label">Chapter 10 of 18</span>
+  <a href="11-wazuh-deep-dive.html">Next: Wazuh Deep Dive &rarr;</a>
+</nav>
+<main class="page-wrapper">
+
+  <div class="chapter-header">
+    <div class="chapter-number">Chapter 10</div>
+    <h1>Detecting Abnormal Traffic</h1>
+    <div class="chapter-tagline">Baselines, thresholds, statistical anomalies, and behavioural rules. How Sophos IPS and Wazuh identify threats in a sea of normal traffic.</div>
+  </div>
+
+  <div class="objectives-box">
+    <h3>Learning Objectives</h3>
+    <ul>
+      <li>Define what a traffic baseline is and why it matters</li>
+      <li>Explain signature-based vs anomaly-based detection and when each is used</li>
+      <li>Describe the Sophos IPS signature library and how severity levels are assigned</li>
+      <li>Read a Wazuh composite rule and understand how frequency-based alerting works</li>
+      <li>Identify the key indicators for each major attack category in logs</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>What is Normal? Building a Baseline</h2>
+    <p>You cannot detect abnormal traffic without first knowing what normal looks like. A <strong>baseline</strong> is a statistical picture of your environment during typical operations: how many connections per minute, which ports are commonly used, which external IPs appear regularly, what the typical data transfer volumes are.</p>
+    <p>Baseline knowledge lets you immediately spot anomalies: a server that never made outbound connections suddenly contacting an external IP, a workstation uploading 500 MB at 2am, DNS queries at a rate ten times higher than usual from a single host.</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">Signature-Based vs Anomaly-Based Detection</div>
+      <svg viewBox="0 0 820 200" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+        <rect x="10" y="10" width="390" height="180" rx="8" fill="#eef5fb" stroke="#3a7fc1" stroke-width="2"/>
+        <rect x="10" y="10" width="390" height="30" rx="8" fill="#3a7fc1"/>
+        <text x="205" y="30" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">Signature-Based (Sophos IPS, Wazuh Rules)</text>
+        <text x="25" y="62" font-size="8.5" fill="#333">Compares traffic against a library of known attack patterns</text>
+        <text x="25" y="78" font-size="8.5" fill="#333">Example: "packet contains UNION SELECT" = SQLi signature</text>
+        <text x="25" y="94" font-size="8.5" fill="#333">Example: "8+ SSH failures in 60 seconds" = brute force rule</text>
+        <text x="25" y="116" font-size="8.5" fill="#2a8a2a" font-weight="700">Strengths: low false positive rate, fast, well understood</text>
+        <text x="25" y="132" font-size="8.5" fill="#d63b3b" font-weight="700">Weakness: misses novel/unknown attacks (zero-days)</text>
+        <text x="25" y="155" font-size="8" fill="#888">Sophos has 20,000+ IPS signatures. Wazuh has 3,000+ built-in rules.</text>
+        <text x="25" y="170" font-size="8" fill="#888">Custom rules can be added for your specific environment.</text>
+
+        <rect x="420" y="10" width="390" height="180" rx="8" fill="#f0faf0" stroke="#3aaa3a" stroke-width="2"/>
+        <rect x="420" y="10" width="390" height="30" rx="8" fill="#3aaa3a"/>
+        <text x="615" y="30" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">Anomaly-Based (Baselines + Thresholds)</text>
+        <text x="435" y="62" font-size="8.5" fill="#333">Compares current behaviour against learned baseline</text>
+        <text x="435" y="78" font-size="8.5" fill="#333">Example: host normally sends 1MB/day, today sent 500MB</text>
+        <text x="435" y="94" font-size="8.5" fill="#333">Example: server contacted 50 new IPs in 5 minutes</text>
+        <text x="435" y="116" font-size="8.5" fill="#2a8a2a" font-weight="700">Strengths: can detect novel attacks, no signature needed</text>
+        <text x="435" y="132" font-size="8.5" fill="#d63b3b" font-weight="700">Weakness: higher false positive rate, requires baseline period</text>
+        <text x="435" y="155" font-size="8" fill="#888">Wazuh frequency rules count events in time windows.</text>
+        <text x="435" y="170" font-size="8" fill="#888">Grafana visualisations make volume anomalies visible.</text>
+      </svg>
+      <div class="diagram-caption">Both approaches are necessary. Signature detection catches known attacks reliably. Anomaly detection catches novel threats and insider activity.</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Sophos IPS: How Signatures Work</h2>
+    <p>The Sophos IPS (Intrusion Prevention System) inspects network traffic against a library of thousands of signatures. Each signature has a unique ID, a severity level, and a recommended action (Alert, Drop, or Block).</p>
+
+    <table class="field-table">
+      <thead><tr><th>Sophos IPS Severity</th><th>Numeric Range</th><th>Example Signature</th><th>Typical Action</th></tr></thead>
+      <tbody>
+        <tr><td>Critical</td><td>9-10</td><td>Exploit kit, active ransomware C2</td><td>Block (source IP blocked for duration)</td></tr>
+        <tr><td>High</td><td>7-8</td><td>Port scan, SQLi attempt, RCE attempt</td><td>Drop (packet dropped, connection reset)</td></tr>
+        <tr><td>Medium</td><td>4-6</td><td>Protocol anomaly, unusual TLS version</td><td>Alert (log and allow)</td></tr>
+        <tr><td>Low</td><td>1-3</td><td>Informational, policy violation</td><td>Alert</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-ir">
+      <div class="callout-title">IPS Action vs Firewall Action</div>
+      A Sophos IPS "Drop" only discards the offending packet. The TCP connection may continue. A Sophos IPS "Block" adds the source IP to a temporary block list, rejecting all further traffic from that IP for a configurable period. A Firewall "Deny" is a static policy rule that permanently blocks matching traffic based on IP/port/protocol.
+    </div>
+
+    <h3>Wazuh Frequency-Based Rules</h3>
+    <p>Wazuh can detect attacks that are only visible when you look at many events together. A single failed SSH login (rule 5710, level 5) is not an alert worth escalating. But eight failures in sixty seconds from the same source (rule 5712, level 10) is a brute force attack.</p>
+    <p>This is done with <strong>frequency rules</strong>: a child rule that counts how many times its parent rule has fired for the same grouping field (usually srcip) within a time window.</p>
+
+    <div class="log-label">Wazuh Rule Definition - Brute Force Detection</div>
+    <div class="log-block"><span class="log-comment">&lt;!-- Parent rule: single SSH failure (level 5, no alert by default) --&gt;</span>
+&lt;<span class="log-key">rule</span> <span class="log-key">id</span>="<span class="log-val">5710</span>" <span class="log-key">level</span>="<span class="log-num">5</span>"&gt;
+  &lt;<span class="log-key">match</span>&gt;<span class="log-val">Failed password</span>&lt;/match&gt;
+  &lt;<span class="log-key">description</span>&gt;<span class="log-val">SSH authentication failed</span>&lt;/description&gt;
+&lt;/rule&gt;
+
+<span class="log-comment">&lt;!-- Child rule: 8 failures from same IP in 60s = brute force (level 10, fires alert) --&gt;</span>
+&lt;<span class="log-key">rule</span> <span class="log-key">id</span>="<span class="log-val">5712</span>" <span class="log-key">level</span>="<span class="log-num">10</span>"&gt;
+  &lt;<span class="log-key">if_matched_sid</span>&gt;<span class="log-val">5710</span>&lt;/if_matched_sid&gt;
+  &lt;<span class="log-key">same_source_ip</span>/&gt;         <span class="log-comment">&lt;!-- group by source IP --&gt;</span>
+  &lt;<span class="log-key">frequency</span>&gt;<span class="log-val">8</span>&lt;/frequency&gt;   <span class="log-comment">&lt;!-- 8 times --&gt;</span>
+  &lt;<span class="log-key">timeframe</span>&gt;<span class="log-val">60</span>&lt;/timeframe&gt;   <span class="log-comment">&lt;!-- within 60 seconds --&gt;</span>
+  &lt;<span class="log-key">description</span>&gt;<span class="log-val">SSHD brute force trying to get access to the system</span>&lt;/description&gt;
+&lt;/rule&gt;</div>
+  </div>
+
+  <div class="section">
+    <h2>Attack Category Indicators Reference</h2>
+    <p>For each major attack category, here are the specific log fields and values that indicate that attack is occurring or has occurred.</p>
+
+    <table class="field-table">
+      <thead><tr><th>Attack Category</th><th>Tool That Sees It</th><th>Key Fields and Values</th></tr></thead>
+      <tbody>
+        <tr><td>Brute Force (SSH)</td><td>Wazuh (rule 5712)</td><td>rule.level=10, same srcip, many "Failed password" in 60s</td></tr>
+        <tr><td>Brute Force (Web)</td><td>SafeLine WAF + Wazuh</td><td>method=POST, url=/login, status_code=401 x 10+ from same src_ip</td></tr>
+        <tr><td>SQL Injection</td><td>SafeLine WAF</td><td>attack_type=sqli, action=block, url contains %27 OR UNION SELECT</td></tr>
+        <tr><td>XSS</td><td>SafeLine WAF</td><td>attack_type=xss, url or body contains &lt;script&gt; or javascript:</td></tr>
+        <tr><td>Directory Scan</td><td>SafeLine WAF + Wazuh</td><td>Many 404s, short time window, same src_ip, sequential common paths</td></tr>
+        <tr><td>Port Scan</td><td>Sophos IPS (sig 18487)</td><td>signature_name="TCP SYN Port Scan", action=Drop, many dst_ports same src</td></tr>
+        <tr><td>Data Exfiltration</td><td>Sophos Flow Logs</td><td>Internal src_ip, external unknown dst_ip, sent_bytes &gt; 50000</td></tr>
+        <tr><td>C2 Beaconing</td><td>Sophos DNS + Wazuh</td><td>Periodic DNS queries (fixed interval), unknown domain, same internal host</td></tr>
+        <tr><td>ARP Spoofing</td><td>Wazuh (rule 2502)</td><td>arp.opcode=2 (reply), ip claimed by different MAC than previously seen</td></tr>
+        <tr><td>Lateral Movement</td><td>Wazuh</td><td>Successful auth from single source to multiple internal hosts in short window</td></tr>
+        <tr><td>File Integrity Violation</td><td>Wazuh FIM</td><td>rule.groups contains syscheck, file path in /etc or /bin, event=modified</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="takeaways">
+    <h2>Key Takeaways</h2>
+    <ul>
+      <li>You cannot detect abnormal without knowing normal. Spend time understanding baseline traffic volumes, common ports, and typical connection patterns before investigating alerts.</li>
+      <li>Signature-based detection (Sophos IPS, Wazuh rules) catches known attacks reliably with low false positives. Anomaly-based detection catches novel attacks but generates more noise.</li>
+      <li>Wazuh frequency rules aggregate events over time windows. A level-10 alert from rule 5712 means the brute force threshold was crossed, not just that one failed login occurred.</li>
+      <li>The attack indicator table in this chapter is your quick-reference during investigations. Cross-reference the tool, the fields, and the values to confirm or rule out each category.</li>
+    </ul>
+  </div>
+
+</main>
+<nav class="chapter-nav" style="margin-top:0;">
+  <a class="nav-home" href="index.html">Home</a>
+  <a href="09-packets-to-evidence.html">&larr; Chapter 08</a>
+  <span class="chapter-nav-spacer"></span>
+  <a href="11-wazuh-deep-dive.html">Next: Wazuh Deep Dive &rarr;</a>
+</nav>
+</body>
+</html>

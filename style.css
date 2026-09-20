@@ -1,0 +1,565 @@
+/* ============================================================
+   Shef Labs Cyber Academy - Course Stylesheet
+   Theme: Light mode, Burnt Orange (#CC5500)
+   ============================================================ */
+
+/* ---------- Reset and Base ---------- */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: 'Segoe UI', Arial, sans-serif;
+  background: #f7f5f2;
+  color: #1a1a1a;
+  line-height: 1.7;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ---------- Typography ---------- */
+h1, h2, h3, h4, h5 {
+  font-weight: 700;
+  line-height: 1.25;
+  color: #1a1a1a;
+}
+
+h1 { font-size: 2rem; margin-bottom: 0.5rem; }
+h2 { font-size: 1.5rem; margin-top: 2rem; margin-bottom: 0.75rem; border-left: 4px solid #CC5500; padding-left: 0.75rem; }
+h3 { font-size: 1.15rem; margin-top: 1.5rem; margin-bottom: 0.5rem; color: #CC5500; }
+h4 { font-size: 1rem; margin-top: 1rem; margin-bottom: 0.4rem; color: #333; }
+
+p { margin-bottom: 1rem; }
+
+a { color: #CC5500; text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+ul, ol { margin-bottom: 1rem; padding-left: 1.5rem; }
+li { margin-bottom: 0.3rem; }
+
+strong { color: #1a1a1a; }
+
+code {
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 0.875rem;
+  background: #f0ede8;
+  color: #8B2500;
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+}
+
+/* ---------- Site Header / Logo ---------- */
+.site-header {
+  background: #ffffff;
+  border-bottom: 3px solid #CC5500;
+  padding: 0 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 64px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  text-decoration: none;
+}
+
+.logo-mark {
+  width: 36px;
+  height: 36px;
+  background: #CC5500;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.logo-mark svg {
+  width: 22px;
+  height: 22px;
+  fill: #ffffff;
+}
+
+.logo-text {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #1a1a1a;
+  letter-spacing: -0.02em;
+}
+
+.logo-text span {
+  color: #CC5500;
+}
+
+.header-subtitle {
+  font-size: 0.8rem;
+  color: #888;
+  font-weight: 400;
+}
+
+/* ---------- Chapter Navigation ---------- */
+.chapter-nav {
+  background: #fff8f4;
+  border-bottom: 1px solid #e8d5c4;
+  padding: 0.6rem 2rem;
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  font-size: 0.875rem;
+}
+
+.chapter-nav a {
+  color: #CC5500;
+  font-weight: 600;
+  padding: 0.3rem 0.8rem;
+  border-radius: 4px;
+  border: 1px solid #CC5500;
+  transition: background 0.15s, color 0.15s;
+}
+
+.chapter-nav a:hover {
+  background: #CC5500;
+  color: #fff;
+  text-decoration: none;
+}
+
+.chapter-nav .nav-home {
+  background: #CC5500;
+  color: #fff;
+}
+
+.chapter-nav .nav-home:hover {
+  background: #a84400;
+}
+
+.chapter-nav-spacer {
+  flex: 1;
+}
+
+.chapter-label {
+  color: #888;
+  font-size: 0.8rem;
+}
+
+/* ---------- Main Layout ---------- */
+.page-wrapper {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 4rem;
+  overflow-x: hidden;
+}
+
+/* ---------- Chapter Header ---------- */
+.chapter-header {
+  background: linear-gradient(135deg, #CC5500 0%, #e86a1a 100%);
+  color: #fff;
+  border-radius: 10px;
+  padding: 2rem 2.5rem;
+  margin-bottom: 2rem;
+}
+
+.chapter-number {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  opacity: 0.8;
+  margin-bottom: 0.4rem;
+}
+
+.chapter-header h1 {
+  color: #fff;
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+}
+
+.chapter-tagline {
+  font-size: 1rem;
+  opacity: 0.9;
+  font-weight: 400;
+}
+
+/* ---------- Learning Objectives ---------- */
+.objectives-box {
+  background: #fff8f4;
+  border: 1px solid #e8d5c4;
+  border-left: 4px solid #CC5500;
+  border-radius: 6px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.objectives-box h3 {
+  margin-top: 0;
+  margin-bottom: 0.75rem;
+  color: #CC5500;
+  font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.objectives-box ul {
+  margin-bottom: 0;
+}
+
+.objectives-box li {
+  font-size: 0.95rem;
+}
+
+/* ---------- Content Sections ---------- */
+.section {
+  background: #ffffff;
+  border-radius: 8px;
+  padding: 1.75rem 2rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid #ece6de;
+}
+
+/* ---------- Callout Boxes ---------- */
+.callout {
+  border-radius: 6px;
+  padding: 1rem 1.25rem;
+  margin: 1.25rem 0;
+  font-size: 0.95rem;
+}
+
+.callout-title {
+  font-weight: 700;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 0.4rem;
+}
+
+.callout-ir {
+  background: #fff3e8;
+  border-left: 4px solid #CC5500;
+  color: #5a2800;
+}
+
+.callout-ir .callout-title { color: #CC5500; }
+
+.callout-warning {
+  background: #fffbe6;
+  border-left: 4px solid #f0a500;
+  color: #5a3d00;
+}
+
+.callout-warning .callout-title { color: #f0a500; }
+
+.callout-info {
+  background: #eef5fb;
+  border-left: 4px solid #3a7fc1;
+  color: #1a3a5a;
+}
+
+.callout-info .callout-title { color: #3a7fc1; }
+
+.callout-danger {
+  background: #fef0f0;
+  border-left: 4px solid #d63b3b;
+  color: #5a1a1a;
+}
+
+.callout-danger .callout-title { color: #d63b3b; }
+
+/* ---------- Log and Code Blocks ---------- */
+.log-block {
+  background: #1e1e1e;
+  color: #d4d4d4;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 0.82rem;
+  border-radius: 6px;
+  padding: 1.25rem 1.5rem;
+  overflow-x: auto;
+  max-width: 100%;
+  margin: 1rem 0;
+  line-height: 1.6;
+  border: 1px solid #333;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.log-block .log-key   { color: #9cdcfe; }
+.log-block .log-val   { color: #ce9178; }
+.log-block .log-num   { color: #b5cea8; }
+.log-block .log-bool  { color: #569cd6; }
+.log-block .log-hl    { background: #CC5500; color: #fff; padding: 0 2px; border-radius: 2px; }
+.log-block .log-comment { color: #6a9955; font-style: italic; }
+
+.log-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #888;
+  margin-bottom: 0.3rem;
+  margin-top: 1rem;
+}
+
+/* ---------- Log Field Tables ---------- */
+.field-table-wrap {
+  overflow-x: auto;
+  max-width: 100%;
+  margin: 1rem 0 1.5rem;
+}
+
+.field-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+.field-table thead tr {
+  background: #CC5500;
+  color: #fff;
+}
+
+.field-table thead th {
+  padding: 0.6rem 0.85rem;
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.8rem;
+  letter-spacing: 0.03em;
+}
+
+.field-table tbody tr:nth-child(even) {
+  background: #faf6f2;
+}
+
+.field-table tbody tr:nth-child(odd) {
+  background: #ffffff;
+}
+
+.field-table tbody tr:hover {
+  background: #fff3e8;
+}
+
+.field-table td {
+  padding: 0.55rem 0.85rem;
+  border-bottom: 1px solid #ece6de;
+  vertical-align: top;
+}
+
+.field-table td:first-child {
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 0.8rem;
+  color: #8B2500;
+  word-break: break-word;
+}
+
+.field-table td:nth-child(2) {
+  color: #555;
+  font-size: 0.8rem;
+  word-break: break-word;
+}
+
+.field-table td:nth-child(3) {
+  font-family: 'Consolas', monospace;
+  font-size: 0.78rem;
+  color: #444;
+}
+
+.field-table td:nth-child(4) {
+  color: #333;
+  font-size: 0.85rem;
+}
+
+/* ---------- Diagrams ---------- */
+.diagram-wrap {
+  background: #ffffff;
+  border: 1px solid #ece6de;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin: 1.5rem 0;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.diagram-wrap svg {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+.diagram-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #CC5500;
+  margin-bottom: 1rem;
+  text-align: center;
+}
+
+.diagram-caption {
+  font-size: 0.8rem;
+  color: #888;
+  text-align: center;
+  margin-top: 0.75rem;
+  font-style: italic;
+}
+
+/* ---------- Key Takeaways ---------- */
+.takeaways {
+  background: #1a1a1a;
+  color: #f5f5f5;
+  border-radius: 8px;
+  padding: 1.75rem 2rem;
+  margin-top: 2rem;
+}
+
+.takeaways h2 {
+  color: #CC5500;
+  border-left-color: #CC5500;
+  margin-top: 0;
+}
+
+.takeaways li {
+  margin-bottom: 0.5rem;
+  font-size: 0.95rem;
+}
+
+.takeaways li::marker {
+  color: #CC5500;
+}
+
+/* ---------- Index Page - Chapter Grid ---------- */
+.index-hero {
+  background: linear-gradient(135deg, #CC5500 0%, #e86a1a 100%);
+  color: #fff;
+  border-radius: 10px;
+  padding: 3rem 2.5rem;
+  margin-bottom: 2rem;
+  text-align: center;
+}
+
+.index-hero h1 {
+  color: #fff;
+  font-size: 2.2rem;
+  margin-bottom: 0.5rem;
+}
+
+.index-hero p {
+  font-size: 1.05rem;
+  opacity: 0.9;
+  margin-bottom: 0;
+}
+
+.chapter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.chapter-card {
+  background: #ffffff;
+  border: 1px solid #ece6de;
+  border-radius: 8px;
+  padding: 1.25rem 1.5rem;
+  text-decoration: none;
+  color: inherit;
+  transition: box-shadow 0.15s, border-color 0.15s;
+  display: block;
+}
+
+.chapter-card:hover {
+  box-shadow: 0 4px 16px rgba(204,85,0,0.15);
+  border-color: #CC5500;
+  text-decoration: none;
+}
+
+.chapter-card-num {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #CC5500;
+  margin-bottom: 0.35rem;
+}
+
+.chapter-card-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin-bottom: 0.4rem;
+}
+
+.chapter-card-desc {
+  font-size: 0.83rem;
+  color: #666;
+  line-height: 1.5;
+  margin-bottom: 0;
+}
+
+.tool-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 3px;
+  margin: 0.1rem 0.1rem 0 0;
+  background: #f0ede8;
+  color: #555;
+  border: 1px solid #ddd;
+}
+
+.tool-badge.wazuh   { background: #fff3e8; color: #8B3300; border-color: #CC5500; }
+.tool-badge.sophos  { background: #eef5fb; color: #1a3a6a; border-color: #3a7fc1; }
+.tool-badge.safeline{ background: #f0faf0; color: #1a5a1a; border-color: #3aaa3a; }
+.tool-badge.grafana { background: #fdf5ff; color: #5a1a8a; border-color: #9b59b6; }
+.tool-badge.kali    { background: #1a1a1a; color: #ddd; border-color: #555; }
+.tool-badge.bettercap { background: #fff8e8; color: #5a3d00; border-color: #f0a500; }
+
+/* ---------- Progress Tracker on Index ---------- */
+.series-flow {
+  background: #ffffff;
+  border: 1px solid #ece6de;
+  border-radius: 8px;
+  padding: 1.5rem 2rem;
+  margin-bottom: 2rem;
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 768px) {
+  .site-header { padding: 0 1rem; }
+  .chapter-nav { padding: 0.6rem 1rem; flex-wrap: wrap; }
+  .page-wrapper { padding: 1.25rem 1rem 3rem; overflow-x: hidden; }
+  .chapter-header { padding: 1.5rem 1.25rem; }
+  .section { padding: 1.25rem 1rem; }
+  h1 { font-size: 1.6rem; }
+  h2 { font-size: 1.2rem; }
+  .chapter-grid { grid-template-columns: 1fr; }
+  .field-table { font-size: 0.78rem; }
+  .field-table thead th, .field-table td { padding: 0.45rem 0.55rem; }
+  .log-block { font-size: 0.75rem; padding: 0.9rem 1rem; }
+}
+
+@media (max-width: 480px) {
+  h1 { font-size: 1.35rem; }
+  h2 { font-size: 1.1rem; }
+  .chapter-header h1 { font-size: 1.35rem; }
+  .diagram-wrap { padding: 0.75rem; }
+  .section { padding: 1rem 0.85rem; }
+}
+
+/* ---------- Print ---------- */
+@media print {
+  .site-header, .chapter-nav { position: static; }
+  .chapter-card:hover { box-shadow: none; }
+}

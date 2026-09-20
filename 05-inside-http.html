@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 04 - Inside HTTP | Shef Labs</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <a class="logo" href="index.html">
+    <div class="logo-mark">
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+      </svg>
+    </div>
+    <div>
+      <div class="logo-text">Shef<span>Labs</span></div>
+      <div class="header-subtitle">Cyber Academy</div>
+    </div>
+  </a>
+  <div style="font-size:0.85rem; color:#888;">Packet Forensics and Network Telemetry</div>
+</header>
+
+<nav class="chapter-nav">
+  <a class="nav-home" href="index.html">Home</a>
+  <a href="04-wireshark.html">&larr; Chapter 04</a>
+  <span class="chapter-nav-spacer"></span>
+  <span class="chapter-label">Chapter 04 of 17</span>
+  <a href="06-reading-the-browser.html">Next: Reading the Browser &rarr;</a>
+</nav>
+
+<main class="page-wrapper">
+
+  <div class="chapter-header">
+    <div class="chapter-number">Chapter 05</div>
+    <h1>Inside HTTP</h1>
+    <div class="chapter-tagline">Requests, responses, methods, status codes, headers, cookies and sessions. The protocol that attackers love most, and what SafeLine WAF and Wazuh see in every exchange.</div>
+  </div>
+
+  <div class="objectives-box">
+    <h3>Learning Objectives</h3>
+    <ul>
+      <li>Describe what HTTP is and why it is the primary attack surface for web applications</li>
+      <li>Read an HTTP request and identify all its components: method, path, headers, body</li>
+      <li>Read an HTTP response and understand status codes, headers, and body</li>
+      <li>Explain how cookies establish and maintain sessions</li>
+      <li>Identify suspicious HTTP patterns in SafeLine WAF logs and Wazuh web logs</li>
+      <li>Recognise the HTTP fields that appear in SafeLine WAF log entries</li>
+    </ul>
+  </div>
+
+  <!-- ====== What is HTTP ====== -->
+  <div class="section">
+    <h2>What is HTTP?</h2>
+    <p><strong>HTTP</strong> (HyperText Transfer Protocol) is the language that web browsers and web servers use to communicate. Every time you load a page, submit a form, log into an application, or click a button on a website, your browser is sending one or more HTTP requests and receiving HTTP responses back.</p>
+    <p>HTTP is a <strong>text-based, stateless protocol</strong>. Text-based means the headers are human-readable. Stateless means the server treats every request independently - it does not remember you from one request to the next. Sessions and cookies (explained below) were invented to work around this limitation.</p>
+    <p>From a security perspective, HTTP is the most important protocol to understand. The vast majority of attacks targeting organisations today happen over HTTP or HTTPS. SQL injection, cross-site scripting, directory traversal, credential stuffing, API abuse and more all arrive as HTTP requests. SafeLine WAF sits in front of your web applications and inspects every one of those requests.</p>
+  </div>
+
+  <!-- ====== HTTP Request Structure ====== -->
+  <div class="section">
+    <h2>Anatomy of an HTTP Request</h2>
+    <p>An HTTP request has three parts: a <strong>request line</strong>, <strong>headers</strong>, and an optional <strong>body</strong>. Each part carries different information.</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">HTTP Request Structure - Annotated</div>
+      <svg viewBox="0 0 820 380" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <!-- Request Line -->
+        <rect x="20" y="20" width="500" height="40" rx="5" fill="#fff3e8" stroke="#CC5500" stroke-width="2"/>
+        <text x="270" y="37" text-anchor="middle" font-size="10" font-weight="700" fill="#CC5500">REQUEST LINE</text>
+        <text x="270" y="52" text-anchor="middle" font-size="9" fill="#333">POST /api/login HTTP/1.1</text>
+
+        <!-- Annotation: Request Line parts -->
+        <rect x="540" y="10" width="260" height="60" rx="4" fill="#fff8f4" stroke="#CC5500" stroke-width="1"/>
+        <text x="545" y="28" font-size="8" font-weight="700" fill="#CC5500">Method:</text>
+        <text x="590" y="28" font-size="8" fill="#555">POST (sending data to server)</text>
+        <text x="545" y="42" font-size="8" font-weight="700" fill="#CC5500">Path:</text>
+        <text x="575" y="42" font-size="8" fill="#555">/api/login (resource being requested)</text>
+        <text x="545" y="56" font-size="8" font-weight="700" fill="#CC5500">Version:</text>
+        <text x="588" y="56" font-size="8" fill="#555">HTTP/1.1</text>
+        <line x1="520" y1="40" x2="540" y2="40" stroke="#CC5500" stroke-width="1"/>
+
+        <!-- Headers -->
+        <rect x="20" y="75" width="500" height="160" rx="5" fill="#eef5fb" stroke="#3a7fc1" stroke-width="2"/>
+        <text x="270" y="95" text-anchor="middle" font-size="10" font-weight="700" fill="#3a7fc1">HEADERS</text>
+        <text x="35" y="112" font-size="9" fill="#1a3a5a">Host: example.com</text>
+        <text x="35" y="128" font-size="9" fill="#1a3a5a">Content-Type: application/json</text>
+        <text x="35" y="144" font-size="9" fill="#1a3a5a">Content-Length: 42</text>
+        <text x="35" y="160" font-size="9" fill="#1a3a5a">Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...</text>
+        <text x="35" y="176" font-size="9" fill="#1a3a5a">User-Agent: Mozilla/5.0 (Windows NT 10.0)</text>
+        <text x="35" y="192" font-size="9" fill="#1a3a5a">Cookie: session_id=a1b2c3d4e5f6</text>
+        <text x="35" y="208" font-size="9" fill="#1a3a5a">X-Forwarded-For: 10.0.0.5</text>
+        <text x="35" y="224" font-size="9" fill="#1a3a5a">[blank line signals end of headers]</text>
+
+        <!-- Annotation: Headers -->
+        <rect x="540" y="75" width="260" height="160" rx="4" fill="#eef5fb" stroke="#3a7fc1" stroke-width="1"/>
+        <text x="545" y="93" font-size="8" font-weight="700" fill="#3a7fc1">Host</text>
+        <text x="580" y="93" font-size="8" fill="#555">Target server hostname</text>
+        <text x="545" y="109" font-size="8" font-weight="700" fill="#3a7fc1">Content-Type</text>
+        <text x="611" y="109" font-size="8" fill="#555">Format of the body</text>
+        <text x="545" y="125" font-size="8" font-weight="700" fill="#3a7fc1">Content-Length</text>
+        <text x="620" y="125" font-size="8" fill="#555">Body size in bytes</text>
+        <text x="545" y="141" font-size="8" font-weight="700" fill="#CC5500">Authorization</text>
+        <text x="620" y="141" font-size="8" fill="#555">Auth token - never log raw</text>
+        <text x="545" y="157" font-size="8" font-weight="700" fill="#CC5500">User-Agent</text>
+        <text x="604" y="157" font-size="8" fill="#555">Browser/tool identity</text>
+        <text x="545" y="173" font-size="8" font-weight="700" fill="#CC5500">Cookie</text>
+        <text x="576" y="173" font-size="8" fill="#555">Session identifier</text>
+        <text x="545" y="189" font-size="8" font-weight="700" fill="#3a7fc1">X-Forwarded-For</text>
+        <text x="636" y="189" font-size="8" fill="#555">Real client IP behind proxy</text>
+        <line x1="520" y1="155" x2="540" y2="155" stroke="#3a7fc1" stroke-width="1"/>
+
+        <!-- Blank line indicator -->
+        <rect x="20" y="240" width="500" height="16" rx="2" fill="#f5f5f5" stroke="#ccc" stroke-width="1"/>
+        <text x="270" y="252" text-anchor="middle" font-size="8" fill="#888">--- blank line (CRLF CRLF) --- separates headers from body ---</text>
+
+        <!-- Body -->
+        <rect x="20" y="262" width="500" height="55" rx="5" fill="#f0faf0" stroke="#3aaa3a" stroke-width="2"/>
+        <text x="270" y="280" text-anchor="middle" font-size="10" font-weight="700" fill="#2a8a2a">BODY (only for POST, PUT, PATCH)</text>
+        <text x="35" y="298" font-size="9" fill="#1a5a1a">{"username": "admin", "password": "secret123"}</text>
+
+        <!-- Annotation: Body -->
+        <rect x="540" y="262" width="260" height="55" rx="4" fill="#f0faf0" stroke="#3aaa3a" stroke-width="1"/>
+        <text x="545" y="280" font-size="8" font-weight="700" fill="#2a8a2a">Body carries POST data</text>
+        <text x="545" y="296" font-size="8" fill="#555">SafeLine WAF inspects this for</text>
+        <text x="545" y="310" font-size="8" fill="#555">SQLi, XSS, and other payloads</text>
+        <line x1="520" y1="289" x2="540" y2="289" stroke="#3aaa3a" stroke-width="1"/>
+
+        <text x="270" y="352" text-anchor="middle" font-size="9" fill="#CC5500" font-weight="700">SafeLine WAF reads ALL of this before deciding to allow or block the request.</text>
+
+      </svg>
+      <div class="diagram-caption">Every HTTP request has a method, a path, headers, and optionally a body. SafeLine WAF inspects all components for attack patterns.</div>
+    </div>
+
+    <h3>HTTP Methods</h3>
+    <p>The method tells the server what action to perform. Attackers use these methods in specific ways, which is why they appear in WAF and web server logs.</p>
+
+    <table class="field-table">
+      <thead><tr><th>Method</th><th>Purpose</th><th>Has Body</th><th>Security Notes</th></tr></thead>
+      <tbody>
+        <tr><td>GET</td><td>Retrieve a resource</td><td>No</td><td>Should never change server state. Parameters in the URL are fully visible in logs.</td></tr>
+        <tr><td>POST</td><td>Send data to create/process</td><td>Yes</td><td>Most form submissions and logins use POST. Body is where SQLi and XSS payloads hide.</td></tr>
+        <tr><td>PUT</td><td>Replace a resource</td><td>Yes</td><td>Used in APIs. Unrestricted PUT endpoints allow file upload attacks.</td></tr>
+        <tr><td>PATCH</td><td>Partially update a resource</td><td>Yes</td><td>API method. Often less validated than POST.</td></tr>
+        <tr><td>DELETE</td><td>Remove a resource</td><td>No</td><td>Should require strong authentication. Unauthenticated DELETE = critical vulnerability.</td></tr>
+        <tr><td>OPTIONS</td><td>Ask what methods are allowed</td><td>No</td><td>Used in CORS pre-flight. Attackers use it to fingerprint what an API accepts.</td></tr>
+        <tr><td>HEAD</td><td>Like GET but no body returned</td><td>No</td><td>Used by scanners to probe without downloading content.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ====== HTTP Response ====== -->
+  <div class="section">
+    <h2>Anatomy of an HTTP Response</h2>
+    <p>The server sends back a response for every request. The most important part of the response from an investigation standpoint is the <strong>status code</strong>. Status codes are three-digit numbers that tell you exactly what happened. Learning the common ones lets you read access logs at a glance.</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">HTTP Response Structure</div>
+      <svg viewBox="0 0 820 280" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <!-- Status Line -->
+        <rect x="20" y="20" width="480" height="38" rx="5" fill="#fff3e8" stroke="#CC5500" stroke-width="2"/>
+        <text x="260" y="36" text-anchor="middle" font-size="10" font-weight="700" fill="#CC5500">STATUS LINE</text>
+        <text x="260" y="51" text-anchor="middle" font-size="9" fill="#333">HTTP/1.1 200 OK</text>
+
+        <rect x="520" y="20" width="280" height="38" rx="4" fill="#fff8f4" stroke="#CC5500" stroke-width="1"/>
+        <text x="530" y="36" font-size="8" font-weight="700" fill="#CC5500">Status code 200 = request succeeded</text>
+        <text x="530" y="50" font-size="8" fill="#555">Version + code + reason phrase</text>
+
+        <!-- Response Headers -->
+        <rect x="20" y="72" width="480" height="120" rx="5" fill="#eef5fb" stroke="#3a7fc1" stroke-width="2"/>
+        <text x="260" y="90" text-anchor="middle" font-size="10" font-weight="700" fill="#3a7fc1">RESPONSE HEADERS</text>
+        <text x="35" y="108" font-size="9" fill="#1a3a5a">Content-Type: text/html; charset=utf-8</text>
+        <text x="35" y="124" font-size="9" fill="#1a3a5a">Content-Length: 4821</text>
+        <text x="35" y="140" font-size="9" fill="#1a3a5a">Set-Cookie: session_id=a1b2c3d4; HttpOnly; Secure; SameSite=Strict</text>
+        <text x="35" y="156" font-size="9" fill="#1a3a5a">X-Content-Type-Options: nosniff</text>
+        <text x="35" y="172" font-size="9" fill="#1a3a5a">Strict-Transport-Security: max-age=31536000</text>
+
+        <rect x="520" y="72" width="280" height="120" rx="4" fill="#eef5fb" stroke="#3a7fc1" stroke-width="1"/>
+        <text x="530" y="92" font-size="8" font-weight="700" fill="#3a7fc1">Set-Cookie</text>
+        <text x="530" y="106" font-size="8" fill="#555">Assigns session cookie to browser</text>
+        <text x="530" y="122" font-size="8" font-weight="700" fill="#2a8a2a">HttpOnly</text>
+        <text x="572" y="122" font-size="8" fill="#555">JS cannot read this cookie</text>
+        <text x="530" y="138" font-size="8" font-weight="700" fill="#2a8a2a">Secure</text>
+        <text x="562" y="138" font-size="8" fill="#555">Only sent over HTTPS</text>
+        <text x="530" y="154" font-size="8" font-weight="700" fill="#2a8a2a">HSTS header</text>
+        <text x="593" y="154" font-size="8" fill="#555">Forces HTTPS in future</text>
+        <text x="530" y="170" font-size="8" fill="#888">Missing security headers = finding</text>
+
+        <!-- Body -->
+        <rect x="20" y="210" width="480" height="50" rx="5" fill="#f0faf0" stroke="#3aaa3a" stroke-width="2"/>
+        <text x="260" y="228" text-anchor="middle" font-size="10" font-weight="700" fill="#2a8a2a">RESPONSE BODY</text>
+        <text x="35" y="248" font-size="9" fill="#1a5a1a">&lt;html&gt;&lt;body&gt;...page content...&lt;/body&gt;&lt;/html&gt;</text>
+
+      </svg>
+      <div class="diagram-caption">The server's response carries a status code, headers, and a body. Security headers in the response tell you how well-hardened the application is.</div>
+    </div>
+
+    <h3>HTTP Status Code Reference</h3>
+    <p>Status codes are grouped by their first digit. Knowing the ranges lets you interpret an access log entry instantly.</p>
+
+    <table class="field-table">
+      <thead><tr><th>Code</th><th>Meaning</th><th>Analyst Significance</th></tr></thead>
+      <tbody>
+        <tr><td>200</td><td>OK - request succeeded</td><td>Normal. High volume of 200s after suspicious requests means the attack may have worked.</td></tr>
+        <tr><td>201</td><td>Created</td><td>Something was created (e.g. new account). Monitor for bulk account creation.</td></tr>
+        <tr><td>301 / 302</td><td>Redirect</td><td>Client is redirected. Open redirects can be abused for phishing.</td></tr>
+        <tr><td>400</td><td>Bad Request</td><td>Malformed request. High volumes from one IP = fuzzing or scanning tool.</td></tr>
+        <tr><td>401</td><td>Unauthorized</td><td>Authentication required. Many 401s in sequence = brute-force or credential stuffing.</td></tr>
+        <tr><td>403</td><td>Forbidden</td><td>Access denied by the application. Attacker probing restricted paths.</td></tr>
+        <tr><td>404</td><td>Not Found</td><td>Resource does not exist. Hundreds of 404s from one IP = directory brute-force (e.g. gobuster).</td></tr>
+        <tr><td>405</td><td>Method Not Allowed</td><td>Wrong HTTP method used. Attacker testing which methods are accepted.</td></tr>
+        <tr><td>429</td><td>Too Many Requests</td><td>Rate limit triggered. Confirms your rate limiting is working.</td></tr>
+        <tr><td>500</td><td>Internal Server Error</td><td>Application crashed. Possible indicator of successful injection causing unexpected behaviour.</td></tr>
+        <tr><td>502 / 503</td><td>Bad Gateway / Unavailable</td><td>Backend is down or overloaded. Under DDoS, these appear at high volume.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-ir">
+      <div class="callout-title">Incident Response: Reading Status Codes in Context</div>
+      A pattern of 401, 401, 401, 401, 200 from the same source IP on a login endpoint is a brute-force attack that eventually succeeded. A pattern of 404, 404, 404 on paths like <code>/admin</code>, <code>/.env</code>, <code>/config.php</code>, <code>/wp-login.php</code> is directory enumeration. Both patterns are clearly visible in SafeLine WAF access logs.
+    </div>
+  </div>
+
+  <!-- ====== Cookies and Sessions ====== -->
+  <div class="section">
+    <h2>Cookies and Sessions</h2>
+    <p>Because HTTP is stateless, applications use <strong>cookies</strong> to maintain session state. When you log in successfully, the server generates a unique session token, stores it on the server side linked to your account, and sends it to your browser as a <code>Set-Cookie</code> response header. Your browser automatically includes that cookie in every subsequent request to the same domain.</p>
+    <p>The server compares the cookie value against its session store to identify you without asking you to log in again for every page load.</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">How Cookies Establish and Maintain a Session</div>
+      <svg viewBox="0 0 780 260" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <rect x="20" y="20" width="110" height="50" rx="5" fill="#fff3e8" stroke="#CC5500" stroke-width="2"/>
+        <text x="75" y="42" text-anchor="middle" font-size="9" font-weight="700" fill="#CC5500">Browser</text>
+        <text x="75" y="57" text-anchor="middle" font-size="8" fill="#555">No cookie yet</text>
+
+        <rect x="550" y="20" width="110" height="50" rx="5" fill="#eef5fb" stroke="#3a7fc1" stroke-width="2"/>
+        <text x="605" y="42" text-anchor="middle" font-size="9" font-weight="700" fill="#3a7fc1">Web Server</text>
+        <text x="605" y="57" text-anchor="middle" font-size="8" fill="#555">SafeLine WAF in front</text>
+
+        <!-- Step 1: POST login -->
+        <line x1="130" y1="45" x2="545" y2="45" stroke="#CC5500" stroke-width="1.5" marker-end="url(#ck1)"/>
+        <text x="337" y="38" text-anchor="middle" font-size="8" fill="#CC5500">1. POST /login  username=admin&amp;password=secret</text>
+
+        <!-- Step 2: Set-Cookie -->
+        <line x1="550" y1="65" x2="135" y2="90" stroke="#3a7fc1" stroke-width="1.5" marker-end="url(#ck2)"/>
+        <text x="337" y="72" text-anchor="middle" font-size="8" fill="#3a7fc1">2. 200 OK  Set-Cookie: session_id=a1b2c3d4; HttpOnly; Secure</text>
+
+        <!-- Browser stores cookie -->
+        <rect x="20" y="105" width="110" height="50" rx="5" fill="#fff3e8" stroke="#CC5500" stroke-width="2"/>
+        <text x="75" y="125" text-anchor="middle" font-size="8" font-weight="700" fill="#CC5500">Browser</text>
+        <text x="75" y="138" text-anchor="middle" font-size="7" fill="#555">Stores cookie:</text>
+        <text x="75" y="150" text-anchor="middle" font-size="7" fill="#888">a1b2c3d4</text>
+
+        <!-- Step 3: Subsequent request with cookie -->
+        <line x1="130" y1="130" x2="545" y2="130" stroke="#CC5500" stroke-width="1.5" marker-end="url(#ck3)"/>
+        <text x="337" y="123" text-anchor="middle" font-size="8" fill="#CC5500">3. GET /dashboard  Cookie: session_id=a1b2c3d4</text>
+
+        <!-- Server validates -->
+        <rect x="550" y="105" width="110" height="50" rx="5" fill="#eef5fb" stroke="#3a7fc1" stroke-width="2"/>
+        <text x="605" y="125" text-anchor="middle" font-size="9" font-weight="700" fill="#3a7fc1">Server</text>
+        <text x="605" y="138" text-anchor="middle" font-size="7" fill="#555">Looks up session</text>
+        <text x="605" y="150" text-anchor="middle" font-size="7" fill="#888">a1b2c3d4 = admin</text>
+
+        <!-- Step 4: Responds -->
+        <line x1="550" y1="150" x2="135" y2="165" stroke="#3a7fc1" stroke-width="1.5" marker-end="url(#ck4)"/>
+        <text x="337" y="162" text-anchor="middle" font-size="8" fill="#3a7fc1">4. 200 OK  Returns admin dashboard</text>
+
+        <!-- SafeLine note -->
+        <rect x="220" y="195" width="340" height="50" rx="5" fill="#fff3e8" stroke="#CC5500" stroke-width="1.5" stroke-dasharray="4,3"/>
+        <text x="390" y="215" text-anchor="middle" font-size="9" font-weight="700" fill="#CC5500">SafeLine WAF sees all of this</text>
+        <text x="390" y="232" text-anchor="middle" font-size="8" fill="#888">Logs session_id, user-agent, src_ip for every request</text>
+
+        <defs>
+          <marker id="ck1" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#CC5500"/></marker>
+          <marker id="ck2" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#3a7fc1"/></marker>
+          <marker id="ck3" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#CC5500"/></marker>
+          <marker id="ck4" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#3a7fc1"/></marker>
+        </defs>
+      </svg>
+      <div class="diagram-caption">The session cookie is set on first login and sent automatically with every request. SafeLine WAF sees the cookie in every request header it inspects.</div>
+    </div>
+
+    <div class="callout callout-danger">
+      <div class="callout-title">Session Hijacking</div>
+      If an attacker steals a valid session cookie, they can impersonate the user without knowing the password. This is called session hijacking. In Chapter 15 (Bettercap MITM), you will see how an attacker can capture session cookies from unencrypted HTTP traffic. Cookie security flags like <code>HttpOnly</code> and <code>Secure</code> reduce but do not eliminate this risk.
+    </div>
+  </div>
+
+  <!-- ====== SafeLine WAF Log Fields ====== -->
+  <div class="section">
+    <h2>SafeLine WAF Log Fields</h2>
+    <p>SafeLine WAF writes a log entry for every request it inspects. Blocked requests include additional fields describing what attack pattern was detected. These are the fields you will query during web application incident investigations.</p>
+
+    <div class="log-label">SafeLine WAF - Access Log (JSON format)</div>
+    <div class="log-block">{
+  "<span class="log-key">timestamp</span>": "<span class="log-val">2026-09-20T10:31:05.122Z</span>",
+  "<span class="log-key">src_ip</span>": "<span class="log-hl">10.0.2.99</span>",
+  "<span class="log-key">src_port</span>": <span class="log-num">48822</span>,
+  "<span class="log-key">dst_ip</span>": "<span class="log-val">10.0.1.10</span>",
+  "<span class="log-key">dst_port</span>": <span class="log-num">443</span>,
+  "<span class="log-key">method</span>": "<span class="log-hl">POST</span>",
+  "<span class="log-key">host</span>": "<span class="log-val">shop.example.com</span>",
+  "<span class="log-key">url</span>": "<span class="log-hl">/api/products?id=1%27%20OR%20%271%27%3D%271</span>",
+  "<span class="log-key">http_version</span>": "<span class="log-val">HTTP/1.1</span>",
+  "<span class="log-key">status_code</span>": <span class="log-num">403</span>,
+  "<span class="log-key">action</span>": "<span class="log-hl">block</span>",
+  "<span class="log-key">attack_type</span>": "<span class="log-hl">sqli</span>",
+  "<span class="log-key">rule_id</span>": "<span class="log-val">942100</span>",
+  "<span class="log-key">rule_message</span>": "<span class="log-val">SQL Injection Attack Detected via libinjection</span>",
+  "<span class="log-key">user_agent</span>": "<span class="log-val">sqlmap/1.7.9 (https://sqlmap.org)</span>",
+  "<span class="log-key">referer</span>": "<span class="log-val">-</span>",
+  "<span class="log-key">bytes_sent</span>": <span class="log-num">312</span>,
+  "<span class="log-key">bytes_received</span>": <span class="log-num">0</span>
+}</div>
+
+    <table class="field-table">
+      <thead><tr><th>Field</th><th>Type</th><th>Example</th><th>Analyst Meaning</th></tr></thead>
+      <tbody>
+        <tr><td>timestamp</td><td>datetime</td><td>2026-09-20T10:31:05Z</td><td>When the request was received. Correlate with Sophos flow logs by time and src_ip.</td></tr>
+        <tr><td>src_ip</td><td>string</td><td>10.0.2.99</td><td>Client IP. Check if internal (lateral movement) or external (inbound attack).</td></tr>
+        <tr><td>method</td><td>string</td><td>POST</td><td>HTTP method used. POST/PUT with attack payloads in the body is the most common vector.</td></tr>
+        <tr><td>host</td><td>string</td><td>shop.example.com</td><td>Which application was targeted. Multiple applications behind one WAF can be filtered here.</td></tr>
+        <tr><td>url</td><td>string</td><td>/api/products?id=1' OR '1'='1</td><td>Full URL including query string. SQLi, XSS and traversal payloads appear here.</td></tr>
+        <tr><td>status_code</td><td>integer</td><td>403</td><td>Response code. 403 from WAF means blocked. 200 after a suspicious URL means it may have passed through.</td></tr>
+        <tr><td>action</td><td>string</td><td>block</td><td>block = request stopped. allow = request passed. monitor = logged but allowed.</td></tr>
+        <tr><td>attack_type</td><td>string</td><td>sqli</td><td>Category of attack detected: sqli, xss, traversal, rce, lfi, ssrf, scanner</td></tr>
+        <tr><td>rule_id</td><td>string</td><td>942100</td><td>Specific rule that fired. Reference the SafeLine rule library for full details.</td></tr>
+        <tr><td>rule_message</td><td>string</td><td>SQL Injection via libinjection</td><td>Human-readable description of the detection reason</td></tr>
+        <tr><td>user_agent</td><td>string</td><td>sqlmap/1.7.9</td><td>Tool or browser identifier. sqlmap, nikto, gobuster, masscan etc. are red flags.</td></tr>
+        <tr><td>referer</td><td>string</td><td>https://example.com/page</td><td>Where the request came from. Missing referer on POST to sensitive endpoints is suspicious.</td></tr>
+        <tr><td>bytes_sent</td><td>integer</td><td>312</td><td>Bytes sent by the client. Very large request bodies may indicate a payload or file upload attack.</td></tr>
+        <tr><td>bytes_received</td><td>integer</td><td>0</td><td>0 bytes received when action=block means the WAF prevented the server from responding at all.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Common Attack Types in SafeLine WAF Logs</h3>
+    <table class="field-table">
+      <thead><tr><th>attack_type Value</th><th>Attack Name</th><th>What It Looks Like in the URL / Body</th></tr></thead>
+      <tbody>
+        <tr><td>sqli</td><td>SQL Injection</td><td><code>' OR '1'='1</code>, <code>; DROP TABLE users--</code>, <code>UNION SELECT</code></td></tr>
+        <tr><td>xss</td><td>Cross-Site Scripting</td><td><code>&lt;script&gt;alert(1)&lt;/script&gt;</code>, <code>javascript:alert()</code>, event handlers in input</td></tr>
+        <tr><td>traversal</td><td>Path Traversal</td><td><code>../../etc/passwd</code>, <code>..%2F..%2Fetc%2Fshadow</code></td></tr>
+        <tr><td>rce</td><td>Remote Code Execution</td><td>Shell commands in parameters, <code>; id</code>, <code>| whoami</code>, command injection</td></tr>
+        <tr><td>lfi</td><td>Local File Inclusion</td><td><code>?page=../../../../etc/passwd</code>, PHP wrappers <code>php://filter</code></td></tr>
+        <tr><td>ssrf</td><td>Server-Side Request Forgery</td><td>Internal IPs in parameters, <code>http://169.254.169.254/</code> (AWS metadata)</td></tr>
+        <tr><td>scanner</td><td>Web Scanner Traffic</td><td>High-volume requests, known scanner User-Agents, probing of common paths</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ====== Wazuh Web Log Fields ====== -->
+  <div class="section">
+    <h2>Wazuh Web Access Log Fields</h2>
+    <p>When a Wazuh agent monitors a web server's access log (Apache, Nginx), it parses each line and makes the fields searchable in the Wazuh dashboard. This gives you endpoint-level visibility into every request that actually reached the application, complementing what SafeLine WAF sees at the perimeter.</p>
+
+    <div class="log-label">Nginx Access Log Line (parsed by Wazuh agent)</div>
+    <div class="log-block">
+<span class="log-comment"># Raw nginx access log line</span>
+10.0.0.5 - jdoe [20/Sep/2026:10:31:07 +0000] "GET /api/users HTTP/1.1" 200 4821 "https://app.example.com/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+
+<span class="log-comment"># Wazuh parses this into these fields:</span>
+<span class="log-key">srcip</span>:         <span class="log-val">10.0.0.5</span>
+<span class="log-key">id</span>:            <span class="log-val">jdoe</span>        <span class="log-comment"># authenticated user if configured</span>
+<span class="log-key">full_log</span>:      <span class="log-val">GET /api/users HTTP/1.1</span>
+<span class="log-key">url</span>:           <span class="log-val">/api/users</span>
+<span class="log-key">http_method</span>:   <span class="log-val">GET</span>
+<span class="log-key">status</span>:        <span class="log-val">200</span>
+<span class="log-key">size</span>:          <span class="log-val">4821</span>         <span class="log-comment"># response bytes</span>
+<span class="log-key">referer</span>:       <span class="log-val">https://app.example.com/</span>
+<span class="log-key">browser</span>:       <span class="log-val">Mozilla/5.0 (Windows NT 10.0; Win64; x64)</span>
+    </div>
+
+    <div class="callout callout-ir">
+      <div class="callout-title">Incident Response: SafeLine WAF vs Wazuh Web Logs</div>
+      SafeLine WAF logs requests it blocked before they reached the server. Wazuh web logs record requests that made it through to the application. Comparing both sources is powerful: if SafeLine blocked an attack but you see a matching request in the Wazuh web log shortly after, the attacker may have modified their payload to bypass the WAF. Both tools complement each other.
+    </div>
+  </div>
+
+  <div class="takeaways">
+    <h2>Key Takeaways</h2>
+    <ul>
+      <li>HTTP is a text-based, stateless protocol. Every web attack arrives as an HTTP request. This makes HTTP log analysis fundamental to web application security.</li>
+      <li>HTTP requests have a method, path, headers, and optional body. Attackers put malicious payloads in the URL, query string, headers, and especially the POST body.</li>
+      <li>Status codes tell the story at a glance. 401 repeated then 200 = brute force success. Hundreds of 404s = directory scanning.</li>
+      <li>Cookies maintain session state. A stolen session cookie is as good as knowing the password. The SafeLine WAF logs the Cookie header on every request.</li>
+      <li>SafeLine WAF fields to know: src_ip, method, url, status_code, action, attack_type, rule_id and user_agent.</li>
+      <li>Wazuh agents on web servers record what actually hit the application. Comparing WAF logs and Wazuh web logs reveals WAF bypass attempts.</li>
+    </ul>
+  </div>
+
+</main>
+
+<nav class="chapter-nav" style="margin-top:0;">
+  <a class="nav-home" href="index.html">Home</a>
+  <a href="04-wireshark.html">&larr; Chapter 04</a>
+  <span class="chapter-nav-spacer"></span>
+  <a href="06-reading-the-browser.html">Next: Reading the Browser &rarr;</a>
+</nav>
+
+</body>
+</html>

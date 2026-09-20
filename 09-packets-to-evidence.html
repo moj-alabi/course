@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 08 - From Packets to Evidence | Shef Labs</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header class="site-header">
+  <a class="logo" href="index.html">
+    <div class="logo-mark"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
+    <div><div class="logo-text">Shef<span>Labs</span></div><div class="header-subtitle">Cyber Academy</div></div>
+  </a>
+  <div style="font-size:0.85rem; color:#888;">Packet Forensics and Network Telemetry</div>
+</header>
+<nav class="chapter-nav">
+  <a class="nav-home" href="index.html">Home</a>
+  <a href="08-reading-logs.html">&larr; Chapter 07</a>
+  <span class="chapter-nav-spacer"></span>
+  <span class="chapter-label">Chapter 09 of 18</span>
+  <a href="10-detecting-abnormal.html">Next: Detecting Abnormal &rarr;</a>
+</nav>
+<main class="page-wrapper">
+
+  <div class="chapter-header">
+    <div class="chapter-number">Chapter 09</div>
+    <h1>From Packets to Evidence</h1>
+    <div class="chapter-tagline">How raw network data becomes structured log events, flows through the detection stack, and arrives as actionable alerts in Wazuh and Grafana.</div>
+  </div>
+
+  <div class="objectives-box">
+    <h3>Learning Objectives</h3>
+    <ul>
+      <li>Describe the full telemetry pipeline from packet capture to alert</li>
+      <li>Understand what Sophos flow records are and how they differ from raw PCAPs</li>
+      <li>Explain how Wazuh agents ship logs and how the manager processes them</li>
+      <li>Describe how Grafana queries Wazuh data for dashboards</li>
+      <li>Read a Wazuh agent configuration file and understand what it monitors</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>The Telemetry Pipeline</h2>
+    <p>Every alert you see in a dashboard started as raw network traffic or a raw log line. Understanding how that data travels through the pipeline helps you know where to look when an alert is missing, delayed, or incorrect.</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">Full Telemetry Pipeline: From Wire to Dashboard</div>
+      <svg viewBox="0 0 820 200" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+        <!-- Stage 1 -->
+        <rect x="10" y="40" width="130" height="80" rx="7" fill="#fff3e8" stroke="#CC5500" stroke-width="2"/>
+        <text x="75" y="72" text-anchor="middle" font-size="10" font-weight="700" fill="#CC5500">Network Traffic</text>
+        <text x="75" y="88" text-anchor="middle" font-size="8" fill="#555">Raw packets</text>
+        <text x="75" y="102" text-anchor="middle" font-size="8" fill="#555">on the wire</text>
+        <text x="75" y="116" text-anchor="middle" font-size="7" fill="#888">Layer 1-7 data</text>
+        <line x1="140" y1="80" x2="170" y2="80" stroke="#CC5500" stroke-width="2" marker-end="url(#p1)"/>
+
+        <!-- Stage 2 -->
+        <rect x="170" y="40" width="130" height="80" rx="7" fill="#eef5fb" stroke="#3a7fc1" stroke-width="2"/>
+        <text x="235" y="72" text-anchor="middle" font-size="10" font-weight="700" fill="#3a7fc1">Sophos Firewall</text>
+        <text x="235" y="88" text-anchor="middle" font-size="8" fill="#555">Inspects, allows</text>
+        <text x="235" y="102" text-anchor="middle" font-size="8" fill="#555">or blocks traffic</text>
+        <text x="235" y="116" text-anchor="middle" font-size="7" fill="#888">Writes flow logs + IPS logs</text>
+        <line x1="300" y1="80" x2="330" y2="80" stroke="#3a7fc1" stroke-width="2" marker-end="url(#p2)"/>
+
+        <!-- Stage 3 -->
+        <rect x="330" y="40" width="130" height="80" rx="7" fill="#f0faf0" stroke="#3aaa3a" stroke-width="2"/>
+        <text x="395" y="72" text-anchor="middle" font-size="10" font-weight="700" fill="#2a8a2a">Wazuh Agent</text>
+        <text x="395" y="88" text-anchor="middle" font-size="8" fill="#555">Reads local OS</text>
+        <text x="395" y="102" text-anchor="middle" font-size="8" fill="#555">and app logs</text>
+        <text x="395" y="116" text-anchor="middle" font-size="7" fill="#888">Ships events to manager</text>
+        <line x1="460" y1="80" x2="490" y2="80" stroke="#3aaa3a" stroke-width="2" marker-end="url(#p3)"/>
+
+        <!-- Stage 4 -->
+        <rect x="490" y="40" width="130" height="80" rx="7" fill="#f5f0fa" stroke="#9b59b6" stroke-width="2"/>
+        <text x="555" y="72" text-anchor="middle" font-size="10" font-weight="700" fill="#7b29b6">Wazuh Manager</text>
+        <text x="555" y="88" text-anchor="middle" font-size="8" fill="#555">Correlates events</text>
+        <text x="555" y="102" text-anchor="middle" font-size="8" fill="#555">Runs rules engine</text>
+        <text x="555" y="116" text-anchor="middle" font-size="7" fill="#888">Stores in OpenSearch</text>
+        <line x1="620" y1="80" x2="650" y2="80" stroke="#9b59b6" stroke-width="2" marker-end="url(#p4)"/>
+
+        <!-- Stage 5 -->
+        <rect x="650" y="40" width="150" height="80" rx="7" fill="#fff8f0" stroke="#f0a500" stroke-width="2"/>
+        <text x="725" y="72" text-anchor="middle" font-size="10" font-weight="700" fill="#8a5a00">Grafana Dashboard</text>
+        <text x="725" y="88" text-anchor="middle" font-size="8" fill="#555">Visualises alerts</text>
+        <text x="725" y="102" text-anchor="middle" font-size="8" fill="#555">Queries OpenSearch</text>
+        <text x="725" y="116" text-anchor="middle" font-size="7" fill="#888">Analyst reviews here</text>
+
+        <text x="410" y="175" text-anchor="middle" font-size="9" fill="#CC5500" font-weight="700">End-to-end latency from packet to dashboard alert: typically 5-30 seconds</text>
+        <defs>
+          <marker id="p1" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#CC5500"/></marker>
+          <marker id="p2" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#3a7fc1"/></marker>
+          <marker id="p3" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#3aaa3a"/></marker>
+          <marker id="p4" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#9b59b6"/></marker>
+        </defs>
+      </svg>
+      <div class="diagram-caption">From raw packet to dashboard alert. Each stage transforms the data and adds structure that makes it queryable.</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Sophos Flow Records vs Raw PCAPs</h2>
+    <p>Sophos can generate two types of network evidence: <strong>flow records</strong> (NetFlow-style summaries) and <strong>raw packet captures</strong> (PCAP files).</p>
+    <table class="field-table">
+      <thead><tr><th>Type</th><th>What It Contains</th><th>File Size</th><th>Best Used For</th></tr></thead>
+      <tbody>
+        <tr><td>Flow Record</td><td>src_ip, dst_ip, ports, protocol, byte counts, timestamps, action</td><td>Very small (one line per connection)</td><td>Traffic analysis, anomaly detection, incident scoping</td></tr>
+        <tr><td>PCAP</td><td>Every raw packet including full payload (if not encrypted)</td><td>Very large (can be GBs per hour)</td><td>Deep forensic investigation, payload analysis, vulnerability reproduction</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-ir">
+      <div class="callout-title">When to Request a PCAP</div>
+      Request a Sophos PCAP capture when: (1) you need to see the exact payload of a suspicious connection, (2) you are investigating a potential data exfiltration and need to know what was sent, (3) you are reverse-engineering an attack and need the raw HTTP or command strings. Start with flow records for scoping, escalate to PCAP for evidence.
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Wazuh Agent Architecture</h2>
+    <p>A Wazuh agent is a lightweight service installed on every managed host. It reads configured log sources, monitors file integrity, checks running processes, and ships events to the Wazuh manager over an encrypted channel on port 1514.</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">Wazuh Agent to Manager Communication</div>
+      <svg viewBox="0 0 780 180" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+        <rect x="20" y="20" width="280" height="140" rx="7" fill="#f0faf0" stroke="#3aaa3a" stroke-width="2"/>
+        <text x="160" y="45" text-anchor="middle" font-size="10" font-weight="700" fill="#2a8a2a">Wazuh Agent (on host)</text>
+        <text x="35" y="68" font-size="8" fill="#333">Monitors: /var/log/auth.log</text>
+        <text x="35" y="83" font-size="8" fill="#333">Monitors: /var/log/nginx/access.log</text>
+        <text x="35" y="98" font-size="8" fill="#333">Monitors: Windows Event Log</text>
+        <text x="35" y="113" font-size="8" fill="#333">File Integrity: /etc /bin /usr/bin</text>
+        <text x="35" y="128" font-size="8" fill="#333">Process list: every 5 seconds</text>
+        <text x="35" y="143" font-size="8" fill="#888">Port: connects out on 1514/tcp</text>
+
+        <line x1="300" y1="90" x2="380" y2="90" stroke="#3aaa3a" stroke-width="2" marker-end="url(#ag1)"/>
+        <text x="340" y="82" text-anchor="middle" font-size="8" fill="#3aaa3a">Encrypted</text>
+        <text x="340" y="100" text-anchor="middle" font-size="7" fill="#888">TCP 1514</text>
+
+        <rect x="380" y="20" width="380" height="140" rx="7" fill="#f5f0fa" stroke="#9b59b6" stroke-width="2"/>
+        <text x="570" y="45" text-anchor="middle" font-size="10" font-weight="700" fill="#7b29b6">Wazuh Manager</text>
+        <text x="395" y="68" font-size="8" fill="#333">Receives events from all agents</text>
+        <text x="395" y="83" font-size="8" fill="#333">Runs decoder: parses raw text to fields</text>
+        <text x="395" y="98" font-size="8" fill="#333">Runs rules engine: matches patterns</text>
+        <text x="395" y="113" font-size="8" fill="#333">Fires alerts at configured level</text>
+        <text x="395" y="128" font-size="8" fill="#333">Writes alerts to OpenSearch index</text>
+        <text x="395" y="143" font-size="8" fill="#888">Grafana queries OpenSearch for dashboards</text>
+        <defs>
+          <marker id="ag1" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#3aaa3a"/></marker>
+        </defs>
+      </svg>
+      <div class="diagram-caption">Each agent ships events in real time. The manager decodes, correlates, and stores them. The analyst queries the stored data through Grafana or the Wazuh dashboard.</div>
+    </div>
+
+    <h3>Key Wazuh Agent Configuration Fields</h3>
+    <div class="log-label">/var/ossec/etc/ossec.conf (agent configuration excerpt)</div>
+    <div class="log-block"><span class="log-comment">&lt;!-- Log files to monitor --&gt;</span>
+&lt;<span class="log-key">localfile</span>&gt;
+  &lt;<span class="log-key">log_format</span>&gt;<span class="log-val">syslog</span>&lt;/log_format&gt;
+  &lt;<span class="log-key">location</span>&gt;<span class="log-val">/var/log/auth.log</span>&lt;/location&gt;
+&lt;/localfile&gt;
+
+&lt;<span class="log-key">localfile</span>&gt;
+  &lt;<span class="log-key">log_format</span>&gt;<span class="log-val">apache</span>&lt;/log_format&gt;
+  &lt;<span class="log-key">location</span>&gt;<span class="log-val">/var/log/nginx/access.log</span>&lt;/location&gt;
+&lt;/localfile&gt;
+
+<span class="log-comment">&lt;!-- File Integrity Monitoring --&gt;</span>
+&lt;<span class="log-key">syscheck</span>&gt;
+  &lt;<span class="log-key">frequency</span>&gt;<span class="log-val">43200</span>&lt;/frequency&gt;  <span class="log-comment">&lt;!-- check every 12 hours --&gt;</span>
+  &lt;<span class="log-key">directories</span> <span class="log-key">check_all</span>="<span class="log-val">yes</span>"&gt;<span class="log-val">/etc,/bin,/usr/bin</span>&lt;/directories&gt;
+&lt;/syscheck&gt;</div>
+
+    <table class="field-table">
+      <thead><tr><th>Config Key</th><th>Purpose</th><th>Analyst Impact</th></tr></thead>
+      <tbody>
+        <tr><td>localfile / location</td><td>Path to the log file the agent reads</td><td>If a log source is not listed here, Wazuh will not see events from it</td></tr>
+        <tr><td>log_format</td><td>Parser to apply (syslog, apache, json, etc.)</td><td>Wrong format = fields will not be extracted, searches will fail</td></tr>
+        <tr><td>syscheck / directories</td><td>File paths monitored for integrity changes</td><td>Changes to binaries or config files in these paths generate FIM alerts</td></tr>
+        <tr><td>syscheck / frequency</td><td>How often (seconds) to scan for file changes</td><td>Higher frequency catches changes faster but uses more CPU</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="takeaways">
+    <h2>Key Takeaways</h2>
+    <ul>
+      <li>The pipeline is: raw traffic → Sophos inspection → Wazuh agent collection → Wazuh manager correlation → OpenSearch storage → Grafana visualisation.</li>
+      <li>Flow records give you connection metadata (who talked to whom, how much data). PCAPs give you the full payload. Start with flows, escalate to PCAP when needed.</li>
+      <li>Wazuh agents must be configured to monitor the right log files. If a source is not in the agent config, it will not appear in alerts.</li>
+      <li>End-to-end latency from event to alert is typically 5-30 seconds under normal load. High log volume can increase this delay.</li>
+    </ul>
+  </div>
+
+</main>
+<nav class="chapter-nav" style="margin-top:0;">
+  <a class="nav-home" href="index.html">Home</a>
+  <a href="08-reading-logs.html">&larr; Chapter 07</a>
+  <span class="chapter-nav-spacer"></span>
+  <a href="10-detecting-abnormal.html">Next: Detecting Abnormal &rarr;</a>
+</nav>
+</body>
+</html>

