@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 04 - Wireshark: Reading Packets | Shef Labs</title>
+  <link rel="stylesheet" href="../../style.css" />
+  <style>
+    .osi-badge { display:inline-block; padding:2px 9px; border-radius:12px; font-size:0.72rem; font-weight:700; margin-right:6px; vertical-align:middle; }
+    .osi-l2 { background:#e8f5e9; color:#1a5a1a; border:1px solid #2a7a2a; }
+    .osi-l3 { background:#e3f2fd; color:#1a3a6a; border:1px solid #1a5fa1; }
+    .osi-l4 { background:#fff3e0; color:#8a3000; border:1px solid #b34000; }
+    .osi-l6 { background:#f3e5f5; color:#6a1b9a; border:1px solid #9b59b6; }
+    .osi-l7 { background:#fce4ec; color:#8a0000; border:1px solid #d63b3b; }
+  </style>
+</head>
+<body>
+<header class="site-header">
+  <a class="logo" href="../../index.html">
+    <div class="logo-mark"><img src="../../SLCA.png" alt="SLCA" style="width:100%;height:100%;object-fit:contain;" /></div>
+    <div><div class="logo-text">Shef<span>Labs</span></div><div class="header-subtitle">Cyber Academy</div></div>
+  </a>
+  <div style="font-size:0.85rem; color:#888;">Packet Forensics and Network Telemetry</div>
+</header>
+<nav class="chapter-nav">
+  <a class="nav-home" href="index.html">Home</a>
+  <a href="03-the-tcp-conversation.html">&larr; Chapter 03</a>
+  <span class="chapter-nav-spacer"></span>
+  <span class="chapter-label">Chapter 04 of 18</span>
+  <a href="05-inside-http.html">Next: Inside HTTP &rarr;</a>
+</nav>
+<main class="page-wrapper">
+
+  <div class="chapter-header">
+    <div class="chapter-number">Chapter 04</div>
+    <h1>Wireshark: Reading Packets</h1>
+    <div class="chapter-tagline">How to open, filter, and read packet captures. Identifying seven common attacks directly from raw network traffic. The tool every network analyst needs to know.</div>
+  </div>
+
+  <div class="objectives-box">
+    <h3>Learning Objectives</h3>
+    <ul>
+      <li>Navigate all three Wireshark panes and understand what each one shows</li>
+      <li>Write capture filters and display filters and explain the difference between them</li>
+      <li>Expand a packet's protocol layers and read every field inside the Ethernet, IP, TCP, and HTTP headers</li>
+      <li>Identify a TCP SYN port scan, SSH brute force, HTTP credential theft, ARP spoofing, directory brute force, HTTPS stripping, and data exfiltration directly from a PCAP</li>
+      <li>Use Follow TCP Stream to read a full conversation between two hosts</li>
+      <li>Export filtered packets and save evidence correctly</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>What is Wireshark and Why Do Analysts Use It?</h2>
+    <p>Wireshark is a <strong>packet capture and analysis tool</strong>. It captures every packet that arrives at or leaves your network interface and shows you the raw contents of each one in full detail. Think of it as a recording device for everything that travels across the wire, whether encrypted or not, malicious or benign.</p>
+    <p>Analysts use Wireshark to answer questions that log files alone cannot answer. A log tells you that a connection happened. Wireshark tells you exactly what was inside that connection, byte by byte. When a log says "user logged in" you cannot tell whether the password was sent securely. When Wireshark shows you the TCP stream, you can see the password in plain text if HTTPS was not used.</p>
+
+    <div class="callout callout-info">
+      <div class="callout-title">Where Wireshark Fits in This Course</div>
+      You learned in Chapters 01-03 what packets are, how TCP works, and what a three-way handshake looks like in theory. Wireshark is the tool that lets you see all of that in practice. From Chapter 05 onwards, whenever we talk about what a protocol looks like on the wire, you will be able to open a PCAP in Wireshark and see it yourself.
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>The Three Wireshark Panes</h2>
+    <p>When you open Wireshark and start a capture or open a PCAP file, you see three main areas on screen. Understanding each one is essential before you can analyse anything.</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">Wireshark Interface Layout</div>
+      <svg viewBox="0 0 820 340" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <!-- Title bar -->
+        <rect x="5" y="5" width="810" height="22" rx="4" fill="#2d2d2d"/>
+        <text x="410" y="20" text-anchor="middle" font-size="9" fill="#ccc">Wireshark - capture.pcap</text>
+
+        <!-- Filter bar -->
+        <rect x="5" y="27" width="810" height="22" rx="0" fill="#f5f5f5" stroke="#ccc" stroke-width="1"/>
+        <text x="14" y="42" font-size="8" fill="#888">Display filter:</text>
+        <rect x="80" y="30" width="560" height="14" rx="2" fill="#fff" stroke="#3a7fc1" stroke-width="1.5"/>
+        <text x="86" y="41" font-size="7.5" fill="#3a7fc1">tcp.flags.syn == 1 and tcp.flags.ack == 0</text>
+        <rect x="648" y="30" width="60" height="14" rx="2" fill="#3a7fc1"/>
+        <text x="678" y="41" text-anchor="middle" font-size="7.5" fill="#fff">Apply</text>
+        <text x="720" y="42" font-size="7.5" fill="#888">Clear</text>
+
+        <!-- Pane 1: Packet List -->
+        <rect x="5" y="49" width="810" height="100" rx="0" fill="#fff" stroke="#ddd" stroke-width="1"/>
+        <rect x="5" y="49" width="810" height="16" fill="#e8e8e8"/>
+        <text x="12" y="60" font-size="7.5" font-weight="700" fill="#333">No.</text>
+        <text x="45" y="60" font-size="7.5" font-weight="700" fill="#333">Time</text>
+        <text x="105" y="60" font-size="7.5" font-weight="700" fill="#333">Source</text>
+        <text x="200" y="60" font-size="7.5" font-weight="700" fill="#333">Destination</text>
+        <text x="295" y="60" font-size="7.5" font-weight="700" fill="#333">Protocol</text>
+        <text x="355" y="60" font-size="7.5" font-weight="700" fill="#333">Length</text>
+        <text x="405" y="60" font-size="7.5" font-weight="700" fill="#333">Info</text>
+
+        <rect x="5" y="65" width="810" height="13" fill="#cce8ff"/>
+        <text x="12" y="75" font-size="7" fill="#333">1</text>
+        <text x="45" y="75" font-size="7" fill="#333">0.000000</text>
+        <text x="105" y="75" font-size="7" fill="#333">10.0.2.99</text>
+        <text x="200" y="75" font-size="7" fill="#333">10.0.1.10</text>
+        <text x="295" y="75" font-size="7" fill="#333">TCP</text>
+        <text x="355" y="75" font-size="7" fill="#333">54</text>
+        <text x="405" y="75" font-size="7" fill="#d63b3b">54821 > 22 [SYN] Seq=0 Win=64240</text>
+
+        <rect x="5" y="78" width="810" height="13" fill="#fff"/>
+        <text x="12" y="88" font-size="7" fill="#333">2</text>
+        <text x="45" y="88" font-size="7" fill="#333">0.000312</text>
+        <text x="105" y="88" font-size="7" fill="#333">10.0.1.10</text>
+        <text x="200" y="88" font-size="7" fill="#333">10.0.2.99</text>
+        <text x="295" y="88" font-size="7" fill="#333">TCP</text>
+        <text x="355" y="88" font-size="7" fill="#333">54</text>
+        <text x="405" y="88" font-size="7" fill="#3aaa3a">22 > 54821 [SYN, ACK] Seq=0 Ack=1</text>
+
+        <rect x="5" y="91" width="810" height="13" fill="#cce8ff"/>
+        <text x="12" y="101" font-size="7" fill="#333">3</text>
+        <text x="45" y="101" font-size="7" fill="#333">0.000590</text>
+        <text x="105" y="101" font-size="7" fill="#333">10.0.2.99</text>
+        <text x="200" y="101" font-size="7" fill="#333">10.0.1.10</text>
+        <text x="295" y="101" font-size="7" fill="#333">TCP</text>
+        <text x="355" y="101" font-size="7" fill="#333">54</text>
+        <text x="405" y="101" font-size="7" fill="#333">54822 > 23 [SYN] Seq=0 Win=64240</text>
+
+        <rect x="5" y="104" width="810" height="13" fill="#fff"/>
+        <text x="12" y="114" font-size="7" fill="#333">4</text>
+        <text x="45" y="114" font-size="7" fill="#333">0.000601</text>
+        <text x="105" y="114" font-size="7" fill="#333">10.0.2.99</text>
+        <text x="200" y="114" font-size="7" fill="#333">10.0.1.10</text>
+        <text x="295" y="114" font-size="7" fill="#333">TCP</text>
+        <text x="355" y="114" font-size="7" fill="#333">54</text>
+        <text x="405" y="114" font-size="7" fill="#333">54823 > 80 [SYN] Seq=0 Win=64240</text>
+
+        <!-- Pane 1 label -->
+        <rect x="640" y="50" width="170" height="30" rx="3" fill="#CC5500" opacity="0.9"/>
+        <text x="725" y="63" text-anchor="middle" font-size="8" font-weight="700" fill="#fff">PANE 1: Packet List</text>
+        <text x="725" y="75" text-anchor="middle" font-size="7" fill="#ffe">One row per packet. Click to select.</text>
+
+        <!-- Pane 2: Packet Details -->
+        <rect x="5" y="149" width="810" height="100" rx="0" fill="#fff" stroke="#ddd" stroke-width="1"/>
+        <text x="14" y="163" font-size="8" fill="#333">v Frame 1: 54 bytes on wire</text>
+        <text x="14" y="175" font-size="8" fill="#333">v Ethernet II, Src: 00:1a:2b:3c:4d:5e, Dst: 11:22:33:44:55:66</text>
+        <text x="24" y="187" font-size="8" fill="#555">  Destination: 11:22:33:44:55:66</text>
+        <text x="24" y="198" font-size="8" fill="#555">  Source: 00:1a:2b:3c:4d:5e</text>
+        <text x="24" y="210" font-size="8" fill="#555">  Type: IPv4 (0x0800)</text>
+        <text x="14" y="222" font-size="8" fill="#333">v Internet Protocol Version 4, Src: 10.0.2.99, Dst: 10.0.1.10</text>
+        <text x="14" y="234" font-size="8" fill="#333">v Transmission Control Protocol, Src Port: 54821, Dst Port: 22</text>
+        <text x="24" y="245" font-size="8" fill="#d63b3b">  Flags: 0x002 (SYN)</text>
+
+        <rect x="640" y="150" width="170" height="40" rx="3" fill="#3a7fc1" opacity="0.9"/>
+        <text x="725" y="165" text-anchor="middle" font-size="8" font-weight="700" fill="#fff">PANE 2: Packet Details</text>
+        <text x="725" y="177" text-anchor="middle" font-size="7" fill="#ffe">Click the triangle to expand</text>
+        <text x="725" y="187" text-anchor="middle" font-size="7" fill="#ffe">each protocol layer.</text>
+
+        <!-- Pane 3: Packet Bytes -->
+        <rect x="5" y="249" width="810" height="80" rx="0" fill="#1e1e1e" stroke="#333" stroke-width="1"/>
+        <text x="14" y="265" font-family="Consolas, monospace" font-size="7.5" fill="#9cdcfe">0000</text>
+        <text x="40" y="265" font-family="Consolas, monospace" font-size="7.5" fill="#ce9178">11 22 33 44 55 66  00 1a 2b 3c 4d 5e  08 00 45 00</text>
+        <text x="380" y="265" font-family="Consolas, monospace" font-size="7.5" fill="#888">."3DUf..+&lt;M^..E.</text>
+        <text x="14" y="278" font-family="Consolas, monospace" font-size="7.5" fill="#9cdcfe">0010</text>
+        <text x="40" y="278" font-family="Consolas, monospace" font-size="7.5" fill="#ce9178">00 28 00 01 00 00  40 06 00 00 0a 00  02 63 0a 00</text>
+        <text x="380" y="278" font-family="Consolas, monospace" font-size="7.5" fill="#888">.(....@......c..</text>
+        <text x="14" y="291" font-family="Consolas, monospace" font-size="7.5" fill="#9cdcfe">0020</text>
+        <text x="40" y="291" font-family="Consolas, monospace" font-size="7.5" fill="#ce9178">01 0a d5 25 00 16  00 00 00 00 00 00  00 00 50 02</text>
+        <text x="380" y="291" font-family="Consolas, monospace" font-size="7.5" fill="#888">...%..........P.</text>
+
+        <rect x="640" y="250" width="170" height="40" rx="3" fill="#3aaa3a" opacity="0.9"/>
+        <text x="725" y="265" text-anchor="middle" font-size="8" font-weight="700" fill="#fff">PANE 3: Packet Bytes</text>
+        <text x="725" y="277" text-anchor="middle" font-size="7" fill="#ffe">Raw hexadecimal bytes of</text>
+        <text x="725" y="287" text-anchor="middle" font-size="7" fill="#ffe">the selected packet.</text>
+
+      </svg>
+      <div class="diagram-caption">The three Wireshark panes. Pane 1 lists every packet. Pane 2 shows the protocol layers of the selected packet. Pane 3 shows the raw bytes. Click any field in Pane 2 to highlight its bytes in Pane 3.</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Capture Filters vs Display Filters</h2>
+    <p>Wireshark has two completely separate filter systems. This confuses beginners because they look similar but work very differently.</p>
+
+    <p><strong>Capture filters</strong> are set before you start recording. They tell Wireshark which packets to save to disk. Packets that do not match a capture filter are thrown away immediately and are gone forever. Use these when you only care about specific traffic and want to keep file sizes small.</p>
+
+    <p><strong>Display filters</strong> are applied after packets are already captured. They just hide packets from view without deleting them. You can apply, change, and remove display filters as many times as you want without losing any data. Most analysts work with display filters during investigation.</p>
+
+    <table class="field-table">
+      <thead><tr><th>Filter Type</th><th>When Applied</th><th>Effect on Data</th><th>Syntax</th><th>Example</th></tr></thead>
+      <tbody>
+        <tr><td>Capture filter</td><td>Before capture starts</td><td>Permanently drops non-matching packets</td><td>BPF (Berkeley Packet Filter)</td><td>host 10.0.2.99</td></tr>
+        <tr><td>Display filter</td><td>After capture, any time</td><td>Hides non-matching packets, keeps all data</td><td>Wireshark display filter language</td><td>ip.addr == 10.0.2.99</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Essential Display Filters for Security Analysis</h3>
+    <table class="field-table">
+      <thead><tr><th>What You Want to See</th><th>Display Filter</th><th>Why Analysts Use It</th></tr></thead>
+      <tbody>
+        <tr><td>All traffic from one IP</td><td>ip.src == 10.0.2.99</td><td>Isolate everything one host sent</td></tr>
+        <tr><td>All traffic to/from one IP</td><td>ip.addr == 10.0.2.99</td><td>All conversation with one host</td></tr>
+        <tr><td>Only SYN packets (scan detection)</td><td>tcp.flags.syn == 1 and tcp.flags.ack == 0</td><td>Isolate connection attempts - shows port scan pattern</td></tr>
+        <tr><td>Only SYN/ACK packets (open ports)</td><td>tcp.flags.syn == 1 and tcp.flags.ack == 1</td><td>Shows which ports responded - open port list</td></tr>
+        <tr><td>Only HTTP traffic</td><td>http</td><td>Web requests and responses (unencrypted)</td></tr>
+        <tr><td>HTTP POST requests (credentials)</td><td>http.request.method == "POST"</td><td>Login attempts, form submissions, credential capture</td></tr>
+        <tr><td>DNS queries</td><td>dns</td><td>See what domains a host is looking up</td></tr>
+        <tr><td>ARP traffic</td><td>arp</td><td>Detect ARP spoofing, see MAC-to-IP mappings</td></tr>
+        <tr><td>Traffic to a specific port</td><td>tcp.port == 22</td><td>Isolate SSH traffic</td></tr>
+        <tr><td>TCP RST packets</td><td>tcp.flags.reset == 1</td><td>Closed ports, rejected connections, firewall drops</td></tr>
+        <tr><td>Large packets (exfiltration)</td><td>frame.len > 1400</td><td>Find unusually large data transfers</td></tr>
+        <tr><td>Retransmissions</td><td>tcp.analysis.retransmission</td><td>Network problems, dropped packets, IDS interference</td></tr>
+        <tr><td>HTTP 200 responses</td><td>http.response.code == 200</td><td>Successful requests - compare against attack attempts</td></tr>
+        <tr><td>HTTP 404 responses</td><td>http.response.code == 404</td><td>Mass 404s = directory brute force scanner</td></tr>
+        <tr><td>TLS Client Hello</td><td>tls.handshake.type == 1</td><td>Start of HTTPS connections - compare SNI against known C2 domains</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>Reading a Packet: Protocol Layer Dissection</h2>
+    <p>Every packet in Wireshark is broken into layers. These layers match the OSI model from Chapter 01. When you click a packet in Pane 1 and expand it in Pane 2, you are drilling down from the outermost wrapping (Ethernet) to the innermost payload (the actual application data).</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">Expanding a TCP Packet - All Fields Labelled</div>
+      <svg viewBox="0 0 820 310" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <rect x="5" y="5" width="810" height="295" rx="5" fill="#1e1e1e" stroke="#444" stroke-width="1"/>
+
+        <!-- Frame layer -->
+        <rect x="10" y="12" width="795" height="30" rx="3" fill="#2a2a2a"/>
+        <text x="16" y="24" font-family="Consolas" font-size="9" fill="#569cd6">v Frame 1: 74 bytes captured on interface eth0</text>
+        <text x="16" y="36" font-family="Consolas" font-size="7.5" fill="#888">  Arrival Time: Sep 20, 2026 10:22:14.412</text>
+        <rect x="620" y="14" width="180" height="24" rx="3" fill="#555" opacity="0.7"/>
+        <text x="710" y="24" text-anchor="middle" font-size="7.5" fill="#fff">Physical metadata</text>
+        <text x="710" y="33" text-anchor="middle" font-size="7" fill="#ccc">When packet was captured</text>
+
+        <!-- Ethernet layer -->
+        <rect x="10" y="44" width="795" height="44" rx="3" fill="#1a2a1a"/>
+        <text x="16" y="56" font-family="Consolas" font-size="9" fill="#4ec9b0">v Ethernet II - Layer 2 (Data Link)</text>
+        <text x="16" y="68" font-family="Consolas" font-size="7.5" fill="#888">  Destination MAC: 11:22:33:44:55:66  (the gateway's hardware address)</text>
+        <text x="16" y="79" font-family="Consolas" font-size="7.5" fill="#888">  Source MAC: 00:1a:2b:3c:4d:5e      (the sender's hardware address)</text>
+        <rect x="620" y="46" width="180" height="38" rx="3" fill="#1a5a1a" opacity="0.8"/>
+        <text x="710" y="59" text-anchor="middle" font-size="7.5" fill="#4ec9b0">MAC addresses</text>
+        <text x="710" y="70" text-anchor="middle" font-size="7" fill="#ccc">Physical network identifiers</text>
+        <text x="710" y="80" text-anchor="middle" font-size="7" fill="#ccc">Only valid on local segment</text>
+
+        <!-- IP layer -->
+        <rect x="10" y="90" width="795" height="66" rx="3" fill="#1a1a2a"/>
+        <text x="16" y="102" font-family="Consolas" font-size="9" fill="#9cdcfe">v Internet Protocol Version 4 - Layer 3 (Network)</text>
+        <text x="16" y="114" font-family="Consolas" font-size="7.5" fill="#888">  Source Address: 10.0.2.99          (attacker IP - this is the srcip in log files)</text>
+        <text x="16" y="125" font-family="Consolas" font-size="7.5" fill="#888">  Destination Address: 10.0.1.10     (target IP)</text>
+        <text x="16" y="136" font-family="Consolas" font-size="7.5" fill="#888">  Time to Live: 64                   (decremented at each router, prevents loops)</text>
+        <text x="16" y="147" font-family="Consolas" font-size="7.5" fill="#888">  Protocol: TCP (6)                  (tells IP layer what comes next)</text>
+        <rect x="620" y="92" width="180" height="60" rx="3" fill="#1a1a5a" opacity="0.8"/>
+        <text x="710" y="107" text-anchor="middle" font-size="7.5" fill="#9cdcfe">IP addresses</text>
+        <text x="710" y="118" text-anchor="middle" font-size="7" fill="#ccc">Logical identifiers</text>
+        <text x="710" y="128" text-anchor="middle" font-size="7" fill="#ccc">src = where it came from</text>
+        <text x="710" y="138" text-anchor="middle" font-size="7" fill="#ccc">dst = where it is going</text>
+        <text x="710" y="148" text-anchor="middle" font-size="7" fill="#ccc">TTL drops per router hop</text>
+
+        <!-- TCP layer -->
+        <rect x="10" y="158" width="795" height="80" rx="3" fill="#2a1a1a"/>
+        <text x="16" y="170" font-family="Consolas" font-size="9" fill="#f48771">v Transmission Control Protocol - Layer 4 (Transport)</text>
+        <text x="16" y="182" font-family="Consolas" font-size="7.5" fill="#888">  Source Port: 54821                 (randomly chosen by sender for this connection)</text>
+        <text x="16" y="193" font-family="Consolas" font-size="7.5" fill="#888">  Destination Port: 22               (SSH service - this is the target service)</text>
+        <text x="16" y="204" font-family="Consolas" font-size="7.5" fill="#888">  Sequence Number: 0                 (byte counter, used to reassemble data in order)</text>
+        <text x="16" y="215" font-family="Consolas" font-size="7.5" fill="#d63b3b">  Flags: 0x002 (SYN)                 (this is a connection request, not a data packet)</text>
+        <text x="16" y="226" font-family="Consolas" font-size="7.5" fill="#888">  Window Size: 64240                 (how much data sender can receive at once)</text>
+        <rect x="620" y="160" width="180" height="74" rx="3" fill="#5a1a1a" opacity="0.8"/>
+        <text x="710" y="175" text-anchor="middle" font-size="7.5" fill="#f48771">TCP controls the connection</text>
+        <text x="710" y="186" text-anchor="middle" font-size="7" fill="#ccc">src port: sender's socket</text>
+        <text x="710" y="196" text-anchor="middle" font-size="7" fill="#ccc">dst port: which service</text>
+        <text x="710" y="206" text-anchor="middle" font-size="7" fill="#ccc">SYN = wants to connect</text>
+        <text x="710" y="216" text-anchor="middle" font-size="7" fill="#ccc">ACK = acknowledging data</text>
+        <text x="710" y="226" text-anchor="middle" font-size="7" fill="#ccc">RST = connection rejected</text>
+
+        <!-- No payload note -->
+        <rect x="10" y="240" width="795" height="55" rx="3" fill="#1a1a1a"/>
+        <text x="16" y="255" font-family="Consolas" font-size="9" fill="#888">  [No payload - this is a SYN packet, just a control signal, no application data]</text>
+        <text x="16" y="270" font-family="Consolas" font-size="8" fill="#6a9955">  If this were an HTTP request, you would see the full GET/POST text here</text>
+        <text x="16" y="283" font-family="Consolas" font-size="8" fill="#6a9955">  If this were a plain-text login, you would see username= and password= here</text>
+
+      </svg>
+      <div class="diagram-caption">Every packet has these same layers. The deeper you drill, the closer you get to the actual application data. If the connection uses HTTPS, the application layer is encrypted and shows as unreadable bytes.</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Identifying Attacks in a PCAP</h2>
+    <p>The following patterns each have a distinctive signature in Wireshark. Once you have seen each one, you will recognise it instantly in any capture file.</p>
+
+    <h3>Attack 1: TCP SYN Port Scan <span class="osi-badge osi-l4">Layer 4 - Transport</span></h3>
+    <p><strong>Why this layer:</strong> Port scanning works by sending TCP SYN packets (Layer 4) to probe which services are listening. It requires no knowledge of the application (Layer 7) and no valid Layer 7 content. Sophos IPS detects it at Layer 4. SafeLine WAF cannot see it because it sits at Layer 7 and never processes raw TCP control packets.</p>
+    <p>A port scan sends a SYN packet to each port on a target host one after another. The scanner does not complete the three-way handshake (it sends SYN but never sends the final ACK). This leaves a trail of half-open connection attempts across sequential port numbers.</p>
+    <p><strong>What to look for:</strong> Many SYN packets from the same source IP to many different destination ports on the same target, all arriving within a second or two. No ACK packets follow the SYN/ACK responses.</p>
+    <div class="log-label">Wireshark Display Filter - Isolate SYN Scan Traffic</div>
+    <div class="log-block">tcp.flags.syn == 1 and tcp.flags.ack == 0 and ip.src == <span class="log-hl">10.0.2.99</span>
+
+<span class="log-comment"># What you see in the packet list (rows abbreviated):</span>
+10.0.2.99 -> 10.0.1.10  TCP  54821 > 22   [<span class="log-hl">SYN</span>]   <span class="log-comment"># port 22 = SSH</span>
+10.0.2.99 -> 10.0.1.10  TCP  54822 > 23   [<span class="log-hl">SYN</span>]   <span class="log-comment"># port 23 = Telnet</span>
+10.0.2.99 -> 10.0.1.10  TCP  54823 > 80   [<span class="log-hl">SYN</span>]   <span class="log-comment"># port 80 = HTTP</span>
+10.0.2.99 -> 10.0.1.10  TCP  54824 > 443  [<span class="log-hl">SYN</span>]   <span class="log-comment"># port 443 = HTTPS</span>
+10.0.2.99 -> 10.0.1.10  TCP  54825 > 8080 [<span class="log-hl">SYN</span>]   <span class="log-comment"># port 8080 = alternate web</span>
+<span class="log-comment"># All from same source, to sequential ports, no ACK after SYN/ACK = SYN scan</span></div>
+
+    <h3>Attack 2: SSH Brute Force <span class="osi-badge osi-l4">Layer 4 - Transport</span> <span class="osi-badge osi-l7">Layer 7 - Application</span></h3>
+    <p><strong>Why these layers:</strong> At Layer 4 you see rapid repeated TCP connections to port 22. At Layer 7 the SSH protocol exchanges credentials. Sophos IPS fires on the Layer 4 connection rate. Wazuh fires on Layer 7 auth failure log entries from /var/log/auth.log. SafeLine WAF cannot see SSH at all (it only handles HTTP/HTTPS).</p>
+    <p>A brute force attack tries many passwords against an SSH login. Each attempt opens a full TCP connection to port 22, exchanges SSH protocol messages, fails authentication, and closes the connection. Then the next attempt begins immediately.</p>
+    <p><strong>What to look for:</strong> Rapid, repeated TCP connections to port 22 from the same source. Each connection is short-lived (a few seconds) and ends with FIN or RST. There may be hundreds of these in a short timeframe.</p>
+    <div class="log-label">Wireshark Display Filter - SSH Brute Force</div>
+    <div class="log-block">tcp.port == 22 and ip.src == <span class="log-hl">10.0.2.99</span>
+
+<span class="log-comment"># What you see: many complete three-way handshakes, each lasting ~1-2 seconds</span>
+10.0.2.99 -> 10.0.1.10  TCP  [<span class="log-hl">SYN</span>]          <span class="log-comment"># attempt starts</span>
+10.0.1.10 -> 10.0.2.99  TCP  [<span class="log-hl">SYN, ACK</span>]    <span class="log-comment"># server accepts connection</span>
+10.0.2.99 -> 10.0.1.10  SSH  Client Hello   <span class="log-comment"># SSH negotiation</span>
+10.0.1.10 -> 10.0.2.99  SSH  Server Hello
+10.0.2.99 -> 10.0.1.10  SSH  Userauth Request  <span class="log-comment"># login attempt</span>
+10.0.1.10 -> 10.0.2.99  SSH  Userauth Failure  <span class="log-comment"># wrong password</span>
+10.0.2.99 -> 10.0.1.10  TCP  [<span class="log-hl">FIN</span>]          <span class="log-comment"># connection closed</span>
+<span class="log-comment"># ...immediately repeated hundreds of times</span></div>
+
+    <h3>Attack 3: HTTP Credential Theft <span class="osi-badge osi-l7">Layer 7 - Application</span></h3>
+    <p><strong>Why this layer:</strong> The credentials exist inside the HTTP request body, which is Layer 7 data. Wireshark can see them because it captures all layers. If HTTPS were used, Layer 6 encryption would make the body unreadable to Wireshark (and to a network-based attacker). SafeLine WAF would see the POST content after TLS decryption. Sophos would only see it with SSL inspection enabled.</p>
+    <p>If a login form submits over plain HTTP (not HTTPS), the username and password are sent as readable text inside the TCP payload. Wireshark shows this directly.</p>
+    <p><strong>What to look for:</strong> An HTTP POST request to a login URL containing form fields with user credentials in the packet details or TCP stream.</p>
+    <div class="log-label">Wireshark Filter + Stream Contents</div>
+    <div class="log-block">http.request.method == "POST"
+
+<span class="log-comment"># Select the POST packet, right-click, Follow > TCP Stream</span>
+<span class="log-comment"># You will see the full HTTP conversation including the POST body:</span>
+
+POST /login HTTP/1.1
+Host: shop.example.com
+Content-Type: application/x-www-form-urlencoded
+
+<span class="log-hl">username=admin&password=SuperSecret99!</span>
+
+<span class="log-comment"># The password is visible in full because no HTTPS was used</span></div>
+
+    <h3>Attack 4: ARP Spoofing <span class="osi-badge osi-l2">Layer 2 - Data Link</span></h3>
+    <p><strong>Why this layer:</strong> ARP is a Layer 2 protocol. It operates below IP and is used to map IP addresses to MAC addresses on the local segment. Because it is below Layer 3, Sophos firewall (which starts at Layer 3) is completely blind to ARP spoofing. Wazuh can only detect it via a dedicated ARP monitoring agent or Suricata rule, not from standard firewall logs. Wireshark is the tool that can see it because it captures at Layer 2.</p>
+    <p>ARP spoofing sends forged ARP reply packets claiming that a particular IP address belongs to the attacker's MAC address. Wireshark flags duplicate ARP replies automatically in its Expert Information panel.</p>
+    <div class="log-label">Wireshark Filter + What You See</div>
+    <div class="log-block">arp
+
+<span class="log-comment"># Normal ARP reply (first time seeing IP 10.0.0.1):</span>
+ARP Reply: 10.0.0.1 is at <span class="log-val">11:22:33:44:55:66</span>  <span class="log-comment"># legitimate gateway MAC</span>
+
+<span class="log-comment"># ARP spoofing (attacker sends new reply claiming same IP):</span>
+ARP Reply: 10.0.0.1 is at <span class="log-hl">AA:BB:CC:DD:EE:FF</span>  <span class="log-comment"># attacker's MAC - DIFFERENT</span>
+
+<span class="log-comment"># Wireshark Expert Info panel shows:</span>
+[<span class="log-hl">WARNING] Duplicate use of IP address 10.0.0.1 detected</span>
+<span class="log-comment"># MAC changed from 11:22:33:44:55:66 to AA:BB:CC:DD:EE:FF</span></div>
+
+    <h3>Attack 5: Web Directory Brute Force <span class="osi-badge osi-l7">Layer 7 - Application</span></h3>
+    <p><strong>Why this layer:</strong> Directory brute forcing sends valid HTTP GET requests (Layer 7 application data) to probe for hidden paths. The attack uses the application protocol correctly - it is not a TCP-level anomaly. This is why SafeLine WAF is the primary defence: it operates at Layer 7, sees every HTTP request, and can rate-limit the source IP when the 404 rate crosses a threshold. Sophos IPS may catch it via HTTP-specific signatures, but SafeLine is the purpose-built tool for this.</p>
+    <p>Web scanners like gobuster send hundreds of HTTP GET requests per second, each trying a different URL path from a wordlist. The signature is mass HTTP 404 responses from the same source at extremely high speed.</p>
+    <div class="log-label">Wireshark Filter</div>
+    <div class="log-block">http and ip.src == <span class="log-hl">10.0.2.99</span>
+
+<span class="log-comment"># Packet list shows rapid sequential GETs all from same source:</span>
+GET /.htaccess      HTTP/1.1 -> 404 Not Found    (0.001s)
+GET /.htpasswd      HTTP/1.1 -> 404 Not Found    (0.002s)
+GET /admin          HTTP/1.1 -> 404 Not Found    (0.003s)
+GET /backup         HTTP/1.1 -> 404 Not Found    (0.004s)
+GET /config         HTTP/1.1 -> 404 Not Found    (0.005s)
+<span class="log-comment"># Speed: 100-500 requests per second. All same User-Agent.</span>
+<span class="log-comment"># User-Agent header: gobuster/3.6 (visible in packet details)</span></div>
+
+    <h3>Attack 6: HTTPS Stripping <span class="osi-badge osi-l6">Layer 6 - Presentation</span> <span class="osi-badge osi-l7">Layer 7 - Application</span></h3>
+    <p><strong>Why these layers:</strong> TLS encryption lives at Layer 6 (Presentation). HTTPS stripping prevents the TLS handshake from happening, so the session stays as plain Layer 7 HTTP instead of upgrading to encrypted Layer 6 TLS. Wireshark detects this because it sees HTTP content where TLS should be. Sophos can detect it via its SSL inspection log (no TLS negotiation on an expected HTTPS port). SafeLine WAF sees the resulting plain HTTP traffic and can alert on unencrypted requests to sensitive endpoints.</p>
+    <p>HTTPS stripping downgrades a victim's HTTPS connection to plain HTTP. The victim's browser never upgrades to TLS, so there is no TLS Client Hello packet from the victim to the destination. Instead, you see plain HTTP on port 443.</p>
+    <div class="log-label">Wireshark Filter - Detect HTTPS Stripping</div>
+    <div class="log-block">tcp.port == 443 and !tls
+
+<span class="log-comment"># This filter shows TCP connections to port 443 with NO TLS handshake</span>
+<span class="log-comment"># Normal HTTPS would always start with a TLS Client Hello</span>
+<span class="log-comment"># If you see plain HTTP text on port 443, HTTPS has been stripped</span>
+
+<span class="log-comment"># In the TCP stream you would see:</span>
+GET / HTTP/1.1
+Host: bank.example.com
+<span class="log-comment"># Plain text on a port that should be encrypted = MITM attack active</span></div>
+
+    <h3>Attack 7: Data Exfiltration <span class="osi-badge osi-l4">Layer 4 - Transport</span> <span class="osi-badge osi-l7">Layer 7 - Application</span></h3>
+    <p><strong>Why these layers:</strong> Exfiltration is detectable at Layer 4 via byte volume asymmetry in Sophos flow logs (sent_bytes much higher than recv_bytes) and at Layer 7 via the content of the data being sent. Sophos AppControl logs flag unusual data volumes. Wazuh fires on the volume spike. Wireshark shows the actual data being sent if it is unencrypted. If the exfiltration channel uses HTTPS, only Sophos SSL inspection or a host-based agent can see the content.</p>
+    <p>Exfiltration is when a compromised host sends large amounts of data to an external destination. The pattern is a session where the internal host sends far more data than it receives, over a sustained period.</p>
+    <div class="log-label">Wireshark Filter - Large Outbound Transfers</div>
+    <div class="log-block">ip.src == <span class="log-hl">10.0.1.10</span> and frame.len > 1000
+
+<span class="log-comment"># Then use Statistics > Conversations to see total bytes per connection</span>
+<span class="log-comment"># Look for: high sent bytes, low received bytes, unusual destination IP</span>
+<span class="log-comment"># Normal web browsing: 1-5 KB sent, 50-500 KB received per page</span>
+<span class="log-comment"># Exfiltration: 50-500 MB sent, 1-2 KB received</span>
+
+<span class="log-comment"># Statistics > Conversations > TCP tab example:</span>
+10.0.1.10 <-> 185.220.101.45  Sent: <span class="log-hl">98,442 bytes</span>  Received: 1,204 bytes  Duration: 44s</div>
+  </div>
+
+  <div class="section">
+    <h2>Following a TCP Stream</h2>
+    <p>The most powerful Wireshark feature for investigation is <strong>Follow TCP Stream</strong>. Instead of reading individual packets one at a time, it reassembles the entire conversation between two hosts and shows it as a readable text dialogue.</p>
+    <p>To use it: right-click any packet in the conversation, hover over <em>Follow</em>, then click <em>TCP Stream</em>. Wireshark opens a new window showing everything sent and received in that connection.</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">Follow TCP Stream Window - HTTP Login</div>
+      <svg viewBox="0 0 820 200" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+        <rect x="5" y="5" width="810" height="185" rx="5" fill="#1e1e1e" stroke="#444" stroke-width="1"/>
+        <rect x="5" y="5" width="810" height="20" rx="5" fill="#2d2d2d"/>
+        <text x="410" y="18" text-anchor="middle" font-size="8.5" fill="#ccc">Follow TCP Stream - Stream 7 (10.0.2.99:54821 -- 10.0.1.10:80)</text>
+
+        <text x="14" y="40" font-family="Consolas" font-size="8" fill="#ff8888">POST /login HTTP/1.1</text>
+        <text x="14" y="52" font-family="Consolas" font-size="8" fill="#ff8888">Host: shop.example.com</text>
+        <text x="14" y="64" font-family="Consolas" font-size="8" fill="#ff8888">User-Agent: Mozilla/5.0 (Windows NT 10.0)</text>
+        <text x="14" y="76" font-family="Consolas" font-size="8" fill="#ff8888">Content-Type: application/x-www-form-urlencoded</text>
+        <text x="14" y="88" font-family="Consolas" font-size="8" fill="#ff8888">Content-Length: 37</text>
+        <text x="14" y="100" font-family="Consolas" font-size="8" fill="#ff8888"> </text>
+        <text x="14" y="112" font-family="Consolas" font-size="8" fill="#ff4444">username=admin&amp;password=SuperSecret99!</text>
+
+        <text x="14" y="130" font-family="Consolas" font-size="8" fill="#88aaff">HTTP/1.1 302 Found</text>
+        <text x="14" y="142" font-family="Consolas" font-size="8" fill="#88aaff">Location: /dashboard</text>
+        <text x="14" y="154" font-family="Consolas" font-size="8" fill="#88aaff">Set-Cookie: session=abc123xyz; HttpOnly</text>
+
+        <rect x="600" y="28" width="210" height="50" rx="3" fill="#5a1a1a" opacity="0.85"/>
+        <text x="705" y="44" text-anchor="middle" font-size="8" font-weight="700" fill="#ff8888">Red = sent by attacker</text>
+        <text x="705" y="56" text-anchor="middle" font-size="7.5" fill="#ccc">Password visible in plain text</text>
+        <text x="705" y="67" text-anchor="middle" font-size="7.5" fill="#ccc">because no HTTPS was used</text>
+
+        <rect x="600" y="118" width="210" height="42" rx="3" fill="#1a1a5a" opacity="0.85"/>
+        <text x="705" y="133" text-anchor="middle" font-size="8" font-weight="700" fill="#88aaff">Blue = server response</text>
+        <text x="705" y="145" text-anchor="middle" font-size="7.5" fill="#ccc">302 redirect = login succeeded</text>
+        <text x="705" y="156" text-anchor="middle" font-size="7.5" fill="#ccc">Session cookie issued</text>
+
+        <text x="14" y="178" font-family="Consolas" font-size="7.5" fill="#666">Entire text box shows the raw conversation. Use Ctrl+F to search for keywords like "password" or "username".</text>
+      </svg>
+      <div class="diagram-caption">The TCP Stream window rebuilds the full conversation. Red text is data sent by the client (attacker). Blue text is data sent by the server. In plain HTTP, passwords are readable in full.</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Exporting Evidence from Wireshark</h2>
+    <p>After identifying an attack, you need to save the relevant packets as evidence. Never save a screenshot alone - the raw PCAP is the admissible evidence.</p>
+
+    <table class="field-table">
+      <thead><tr><th>What to Export</th><th>How</th><th>File Format</th><th>When to Use</th></tr></thead>
+      <tbody>
+        <tr><td>Filtered packets only</td><td>File > Export Specified Packets > Displayed</td><td>.pcap or .pcapng</td><td>Include only the relevant evidence, not the entire capture</td></tr>
+        <tr><td>Full capture</td><td>File > Save As</td><td>.pcapng</td><td>When you need to preserve everything for a full forensic review</td></tr>
+        <tr><td>Specific TCP stream as text</td><td>Follow TCP Stream > Save As</td><td>.txt</td><td>When you need the readable conversation for a ticket or report</td></tr>
+        <tr><td>Packet list as CSV</td><td>File > Export Packet Dissections > As CSV</td><td>.csv</td><td>For importing into a spreadsheet or SIEM for further analysis</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-ir">
+      <div class="callout-title">Evidence Naming Convention</div>
+      Name exported PCAPs with the incident ID, date (YYYYMMDD), and a brief description. Example: INC-2026-0042_20260920_ssh-brute-force.pcap. This ensures evidence can be found and linked to the correct ticket years later.
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>UDP Attack Patterns in Wireshark</h2>
+    <p>UDP attacks have completely different signatures from TCP attacks because there is no handshake, no flags, and no connection state. The patterns below cover the three most common UDP-based attacks you will encounter. Each one includes the Wireshark filter, what the traffic looks like, and how each tool in the stack detects and mitigates it.</p>
+
+    <h3>UDP Attack 1: DNS Amplification DDoS <span class="osi-badge osi-l4">Layer 4 - Transport</span></h3>
+    <p>DNS amplification is one of the most effective DDoS techniques. The attacker sends a small DNS query (typically 60-100 bytes) to an open DNS resolver, but forges the source IP address to be the victim's IP. The DNS resolver sends its large response (often 3000+ bytes) to the victim. By coordinating thousands of DNS resolvers simultaneously, the attacker can generate traffic volumes that overwhelm the victim's uplink without needing much bandwidth themselves.</p>
+
+    <p><strong>The amplification factor:</strong> A small ANY or DNSSEC query can produce a response 50-100x larger. Sending 1 Mbps of queries can generate 50-100 Mbps of attack traffic aimed at the victim.</p>
+
+    <div class="log-label">Wireshark Filter - Detect Outbound DNS Amplification (your server being used)</div>
+    <div class="log-block">udp.port == 53 and udp.length > 500
+
+<span class="log-comment"># Normal DNS response: 50-200 bytes</span>
+<span class="log-comment"># Amplification response: 1000-4096 bytes (ANY or DNSSEC queries)</span>
+<span class="log-comment"># What you see - one tiny query generates a huge response to a spoofed IP:</span>
+
+<span class="log-comment"># Request (60 bytes, source IP is spoofed = the victim):</span>
+203.0.113.99 -> <span class="log-hl">10.0.1.5</span>   UDP  ANY? attacker.com  <span class="log-comment"># src=victim's spoofed IP</span>
+
+<span class="log-comment"># Response (3,180 bytes sent to the VICTIM, not the real requester):</span>
+<span class="log-hl">10.0.1.5</span>    -> 203.0.113.99  UDP  3180 bytes      <span class="log-comment"># your server is now part of the attack</span>
+
+<span class="log-comment"># Wireshark Statistics > IO Graph: DNS response bytes spike = amplification in progress</span></div>
+
+    <table class="field-table">
+      <thead><tr><th>Tool</th><th>What it sees</th><th>Detection</th><th>Mitigation</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Sophos Firewall</td>
+          <td>High volume of outbound UDP/53 responses to many different external IPs. IPS engine sees DNS response rate exceeding threshold.</td>
+          <td>IPS signature "DNS Amplification Attack". Sophos flow logs show dst_ip changing rapidly with large recv_bytes on UDP/53.</td>
+          <td>Enable DNS rate limiting in Sophos DoS policy. Restrict recursive DNS to internal IPs only. Block ANY query type. All alerts searchable in Graylog.</td>
+        </tr>
+        <tr>
+          <td>Wazuh</td>
+          <td>Sophos IPS alert forwarded via syslog. Rule fires on high-volume DNS response pattern.</td>
+          <td>Wazuh rule group "dos" fires. Alert level 12+. Graylog receives the Wazuh JSON alert for correlation with Sophos logs.</td>
+          <td>Wazuh active response can trigger a firewall block rule automatically when DNS flood threshold is crossed.</td>
+        </tr>
+        <tr>
+          <td>Grafana</td>
+          <td>VM/container network egress metrics spike. DNS query rate metric (from node exporter) spikes dramatically.</td>
+          <td>Grafana alert rule: "DNS egress bytes per second exceeds 10MB/s for 30 seconds". Fires to alerting channel.</td>
+          <td>Grafana does not block traffic, but its alert provides the earliest warning before logs arrive in Graylog.</td>
+        </tr>
+        <tr>
+          <td>SafeLine WAF</td>
+          <td>Nothing. DNS is UDP Layer 4. SafeLine only inspects HTTP/HTTPS Layer 7 traffic.</td>
+          <td>No detection.</td>
+          <td>Not applicable for this attack type.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>UDP Attack 2: UDP Flood <span class="osi-badge osi-l4">Layer 4 - Transport</span></h3>
+    <p>A UDP flood sends a massive volume of UDP packets to random ports on a target host. The target has no services listening on most ports, so for each packet it must send back an ICMP "Port Unreachable" response. This consumes CPU and bandwidth on both sides. At high volume, the target's uplink and CPU are saturated.</p>
+
+    <p>Unlike DNS amplification, a UDP flood does not require spoofing - the attacker simply floods the target directly. But the attack is traceable because the source IP is real.</p>
+
+    <div class="log-label">Wireshark Filter - UDP Flood Detection</div>
+    <div class="log-block">udp and ip.dst == <span class="log-hl">10.0.1.10</span>
+
+<span class="log-comment"># What you see: massive volume of UDP packets to random high ports</span>
+203.0.113.50 -> 10.0.1.10  UDP  dest port: 31447   60 bytes
+203.0.113.50 -> 10.0.1.10  UDP  dest port: 19284   60 bytes
+203.0.113.50 -> 10.0.1.10  UDP  dest port: 52318   60 bytes
+<span class="log-comment"># Ports are random each time. Payload is garbage/random data.</span>
+<span class="log-comment"># Packets arrive at 10,000+ per second</span>
+
+<span class="log-comment"># The target responds to each with ICMP Port Unreachable:</span>
+10.0.1.10 -> 203.0.113.50  ICMP  Port Unreachable  <span class="log-comment"># this doubles the network load</span>
+
+<span class="log-comment"># Statistics > IO Graph in Wireshark: packets/sec spikes vertically</span>
+<span class="log-comment"># Statistics > Conversations > UDP: one source IP dominates the table</span></div>
+
+    <table class="field-table">
+      <thead><tr><th>Tool</th><th>What it sees</th><th>Detection</th><th>Mitigation</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Sophos Firewall</td>
+          <td>Inbound UDP flood from external IP. IPS sees packets per second to random ports exceeding DoS threshold. Sophos IPS drops the traffic at the perimeter before it reaches the server.</td>
+          <td>IPS signature "UDP Flood". Sophos DoS policy fires. Log: log_type=IPS signature_msg="UDP Flood" action=Drop. Searchable in Graylog: log_type:IPS AND signature_msg:"UDP Flood".</td>
+          <td>Sophos DoS policy: set UDP flood threshold (packets/sec). Enable SYN cookies for TCP and UDP flood protection. GeoIP blocking can reduce attack surface.</td>
+        </tr>
+        <tr>
+          <td>Grafana</td>
+          <td>Network ingress bytes on the target VM spike sharply on the Grafana dashboard. CPU metric also rises (ICMP generation).</td>
+          <td>Grafana alert: "inbound network bytes/sec exceeds 500MB for 60 seconds". Fires immediately - often before Graylog processes the log volume.</td>
+          <td>Grafana alert triggers on-call notification. Analyst checks Graylog for the source IP and blocks it in Sophos.</td>
+        </tr>
+        <tr>
+          <td>Wazuh</td>
+          <td>If the flood overwhelms Sophos and reaches the host, Wazuh agent sees the kernel log "possible UDP flood" and the ICMP error rate in netstat output.</td>
+          <td>Wazuh rule monitors /var/log/kern.log for flood indicators. Active response can add a host-level iptables drop rule for the source IP.</td>
+          <td>Wazuh active response: add iptables rule dropping traffic from flood source. This is a last-resort host-level block when the perimeter firewall is overwhelmed.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>UDP Attack 3: DHCP Starvation <span class="osi-badge osi-l2">Layer 2 - Data Link</span> <span class="osi-badge osi-l4">Layer 4 - Transport</span></h3>
+    <p>DHCP starvation is an attack against your DHCP server. The attacker sends thousands of DHCP DISCOVER requests, each using a different spoofed MAC address. The DHCP server believes each request is from a different new device and assigns it an IP address lease. Eventually the entire IP address pool is exhausted. New legitimate devices cannot get an IP address and are locked off the network.</p>
+
+    <p>This is a Layer 2 attack at its foundation (spoofed MAC addresses) delivered over Layer 4 UDP. A variant is DHCP spoofing - the attacker also runs a rogue DHCP server that responds first, handing out a fake gateway IP and pointing DNS at an attacker-controlled server. All victim traffic then flows through the attacker.</p>
+
+    <div class="log-label">Wireshark Filter - DHCP Starvation Detection</div>
+    <div class="log-block">udp.port == 67 or udp.port == 68
+
+<span class="log-comment"># Normal DHCP traffic: a few DISCOVER packets from real MAC addresses</span>
+<span class="log-comment"># Starvation attack: hundreds of DISCOVER packets per second, all different source MACs</span>
+
+<span class="log-comment"># What you see in the packet list:</span>
+DHCP DISCOVER  src MAC: <span class="log-hl">AA:BB:CC:00:00:01</span>  "What is my IP?"
+DHCP DISCOVER  src MAC: <span class="log-hl">AA:BB:CC:00:00:02</span>  "What is my IP?"
+DHCP DISCOVER  src MAC: <span class="log-hl">AA:BB:CC:00:00:03</span>  "What is my IP?"
+<span class="log-comment"># Hundreds of these per second. All different MACs. All from attacker's real port.</span>
+
+<span class="log-comment"># DHCP server exhausted - legitimate device gets no response:</span>
+<span class="log-comment"># Device sends DHCP DISCOVER, no DHCP OFFER comes back = no IP address assigned</span>
+
+<span class="log-comment"># Wireshark filter to spot the pattern: count unique Ethernet source MACs in DHCP traffic</span>
+<span class="log-comment"># Statistics > Endpoints > Ethernet: many hundreds of unique MACs in a short timeframe</span></div>
+
+    <table class="field-table">
+      <thead><tr><th>Tool</th><th>What it sees</th><th>Detection</th><th>Mitigation</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Sophos Firewall</td>
+          <td>Sophos operates at Layer 3 and above. It does not see raw Layer 2 MAC address manipulation. DHCP traffic (UDP/67-68) passes through unless a specific DHCP inspection rule is configured.</td>
+          <td>Sophos can log high-volume DHCP traffic: protocol:UDP AND dst_port:67 in Graylog shows the rate spike. But Sophos cannot see the MAC spoofing directly.</td>
+          <td>Enable DHCP snooping if Sophos is acting as the DHCP relay. Configure the Sophos DoS policy to rate-limit UDP/67. Network switch port security (MAC address limit per port) is the primary control.</td>
+        </tr>
+        <tr>
+          <td>Wazuh</td>
+          <td>If a Wazuh agent runs on the DHCP server, it ingests the DHCP server log and sees the lease exhaustion pattern. Rule fires when the lease pool drops below a threshold.</td>
+          <td>Wazuh rule for DHCP log: "DHCP pool near exhaustion" or "DHCP DISCOVER flood from multiple MACs". Alert level 10+.</td>
+          <td>Wazuh active response can trigger a script that flushes stale leases or alerts the switch to enable port security on the offending port.</td>
+        </tr>
+        <tr>
+          <td>Grafana</td>
+          <td>Grafana sees the downstream effect: devices failing to get IPs start showing connectivity failures. Container/VM network interface errors increase. DHCP server CPU spikes on the Grafana dashboard.</td>
+          <td>Grafana alert: "DHCP server CPU exceeds 80% for 60 seconds" or "network error rate spike on DHCP server VM".</td>
+          <td>Grafana alert notifies on-call. Analyst investigates Wazuh DHCP logs and Graylog Sophos logs to confirm the attack source port and VLAN.</td>
+        </tr>
+        <tr>
+          <td>Primary control</td>
+          <td>Network switch port security - not a software tool in this stack.</td>
+          <td>Configure a maximum of 1-3 MAC addresses per switch port. Any port sending more than the limit gets automatically shut down or placed in violation mode.</td>
+          <td>DHCP snooping on managed switches: only designated "trusted" ports (uplinks, DHCP servers) can send DHCP OFFERs. Untrusted ports can only send DISCOVER/REQUEST. This stops both starvation and DHCP spoofing.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-ir">
+      <div class="callout-title">Tool Coverage Summary for UDP Attacks</div>
+      Sophos IPS is your primary defence against DNS amplification and UDP floods. Grafana gives you the earliest warning via metric spikes before logs are processed. Wazuh catches host-level impact and can auto-block via active response. SafeLine WAF is irrelevant for all three attacks. DHCP starvation requires network switch port security as the primary control - none of the software tools in this stack can fully prevent it alone. All Sophos and Wazuh alerts are searchable in Graylog.
+    </div>
+  </div>
+
+  <div class="takeaways">
+    <h2>Key Takeaways</h2>
+    <ul>
+      <li>Wireshark has three panes: Packet List (one row per packet), Packet Details (protocol layers expanded), and Packet Bytes (raw hex). Click a field in Details to highlight it in Bytes.</li>
+      <li>Capture filters drop packets permanently before saving. Display filters just hide packets from view. Always use display filters during investigation so you cannot accidentally lose evidence.</li>
+      <li>Every packet has layers: Ethernet (MAC addresses), IP (logical addresses), TCP (port numbers and connection state), and optionally an application layer (HTTP, SSH, DNS). Each layer wraps the one above it.</li>
+      <li>A TCP SYN scan looks like many SYN packets to sequential ports with no follow-up ACK. SSH brute force looks like many rapid, short-lived TCP connections to port 22. HTTP credential theft shows plaintext username and password in the POST body of the TCP stream.</li>
+      <li>Follow TCP Stream (right-click any packet in a connection) is your single most powerful investigation tool. It shows the complete readable conversation between two hosts in one window.</li>
+      <li>Always export the raw PCAP as evidence. A screenshot is not admissible evidence. The PCAP file contains the complete packet data with timestamps.</li>
+      <li>UDP has no handshake and no flags. Source IP spoofing is trivial, which makes UDP the foundation of amplification DDoS attacks. Sophos IPS detects them via rate limits. Alerts are searched in Graylog.</li>
+      <li>DNS amplification: small spoofed query generates a large response sent to the victim. Sophos rate-limits outbound DNS responses. Grafana detects the egress spike first.</li>
+      <li>UDP flood: mass UDP to random ports forces ICMP Port Unreachable responses, saturating the target. Sophos DoS policy drops the flood at the perimeter. Grafana sees the network ingress spike. Wazuh provides host-level active response as a last resort.</li>
+      <li>DHCP starvation: spoofed MAC addresses exhaust the DHCP pool. Sophos cannot see Layer 2 MAC spoofing. Network switch port security (DHCP snooping) is the primary control. Wazuh catches it via the DHCP server log.</li>
+    </ul>
+  </div>
+
+</main>
+<nav class="chapter-nav" style="margin-top:0;">
+  <a class="nav-home" href="index.html">Home</a>
+  <a href="03-the-tcp-conversation.html">&larr; Chapter 03</a>
+  <span class="chapter-nav-spacer"></span>
+  <a href="05-inside-http.html">Next: Inside HTTP &rarr;</a>
+</nav>
+</body>
+</html>

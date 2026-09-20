@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 06 - When HTTP Becomes HTTPS | Shef Labs</title>
+  <link rel="stylesheet" href="../../style.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <a class="logo" href="../../index.html">
+    <div class="logo-mark"><img src="../../SLCA.png" alt="SLCA" style="width:100%;height:100%;object-fit:contain;" /></div>
+    <div>
+      <div class="logo-text">Shef<span>Labs</span></div>
+      <div class="header-subtitle">Cyber Academy</div>
+    </div>
+  </a>
+  <div style="font-size:0.85rem; color:#888;">Packet Forensics and Network Telemetry</div>
+</header>
+
+<nav class="chapter-nav">
+  <a class="nav-home" href="index.html">Home</a>
+  <a href="06-reading-the-browser.html">&larr; Chapter 05</a>
+  <span class="chapter-nav-spacer"></span>
+  <span class="chapter-label">Chapter 07 of 18</span>
+  <a href="08-reading-logs.html">Next: Reading Logs Like an Analyst &rarr;</a>
+</nav>
+
+<main class="page-wrapper">
+
+  <div class="chapter-header">
+    <div class="chapter-number">Chapter 07</div>
+    <h1>When HTTP Becomes HTTPS</h1>
+    <div class="chapter-tagline">TLS handshakes, certificate chains, what Sophos SSL inspection can reveal, and what Bettercap can expose. Understanding what defenders can and cannot see in encrypted traffic.</div>
+  </div>
+
+  <div class="objectives-box">
+    <h3>Learning Objectives</h3>
+    <ul>
+      <li>Explain what TLS does and why HTTPS is not the same as "safe"</li>
+      <li>Trace the TLS handshake step by step and identify what is visible at each stage</li>
+      <li>Understand what a certificate chain is and how browsers validate it</li>
+      <li>Describe what Sophos SSL inspection does and what it reveals to defenders</li>
+      <li>Explain what Server Name Indication (SNI) is and why it is visible even in encrypted traffic</li>
+      <li>Preview how Bettercap performs HTTPS stripping in Chapter 15</li>
+      <li>Read TLS-related log fields from Sophos and Wazuh</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>What TLS Actually Does</h2>
+    <p><strong>TLS</strong> (Transport Layer Security) is the protocol that encrypts traffic between a browser and a server. When a URL starts with <code>https://</code>, all the HTTP content you learned about in the previous three chapters is wrapped inside a TLS encryption layer before it leaves your machine.</p>
+    <p>TLS provides three things: <strong>confidentiality</strong> (only the two parties can read the data), <strong>integrity</strong> (the data cannot be changed in transit without detection), and <strong>authentication</strong> (you can verify you are talking to the real server, not an impostor).</p>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">HTTPS Does Not Mean Safe</div>
+      HTTPS only means the connection between the browser and the server is encrypted. It says nothing about whether the server itself is legitimate, whether the page contains malware, or whether the application has security vulnerabilities. Phishing sites routinely use HTTPS with valid certificates. Malware C2 servers use HTTPS. Your WAF (SafeLine) and firewall (Sophos) need SSL inspection to see inside encrypted traffic.
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>The TLS Handshake Step by Step</h2>
+    <p>Before any encrypted HTTP data flows, the browser and server run a <strong>TLS handshake</strong> to agree on encryption parameters and verify identities. This handshake itself is partially visible on the wire, which is why defenders can extract useful intelligence even from encrypted traffic without breaking encryption.</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">TLS 1.3 Handshake Timeline</div>
+      <svg viewBox="0 0 760 400" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <rect x="30" y="10" width="120" height="35" rx="5" fill="#CC5500"/>
+        <text x="90" y="32" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">Browser</text>
+        <line x1="90" y1="45" x2="90" y2="385" stroke="#CC5500" stroke-width="2" stroke-dasharray="4,3"/>
+
+        <rect x="610" y="10" width="120" height="35" rx="5" fill="#3a7fc1"/>
+        <text x="670" y="32" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">Server</text>
+        <line x1="670" y1="45" x2="670" y2="385" stroke="#3a7fc1" stroke-width="2" stroke-dasharray="4,3"/>
+
+        <!-- Step 1: ClientHello -->
+        <line x1="90" y1="70" x2="665" y2="85" stroke="#CC5500" stroke-width="2" marker-end="url(#tls1)"/>
+        <rect x="200" y="54" width="360" height="22" rx="3" fill="#fff3e8" stroke="#CC5500" stroke-width="1"/>
+        <text x="380" y="69" text-anchor="middle" font-size="8.5" font-weight="700" fill="#CC5500">1. ClientHello</text>
+        <text x="380" y="100" text-anchor="middle" font-size="7.5" fill="#888">TLS version, cipher suites supported, random nonce, SNI (server name)</text>
+        <rect x="200" y="105" width="200" height="16" rx="3" fill="#fff8e8" stroke="#f0a500" stroke-width="1"/>
+        <text x="300" y="117" text-anchor="middle" font-size="7.5" fill="#8a5a00">SNI is visible in plaintext here</text>
+
+        <!-- Step 2: ServerHello + Certificate -->
+        <line x1="670" y1="130" x2="95" y2="150" stroke="#3a7fc1" stroke-width="2" marker-end="url(#tls2)"/>
+        <rect x="200" y="134" width="360" height="22" rx="3" fill="#eef5fb" stroke="#3a7fc1" stroke-width="1"/>
+        <text x="380" y="149" text-anchor="middle" font-size="8.5" font-weight="700" fill="#3a7fc1">2. ServerHello + Certificate + ServerHelloDone</text>
+        <text x="380" y="168" text-anchor="middle" font-size="7.5" fill="#888">Server selects cipher, sends TLS certificate (public key + identity)</text>
+        <rect x="200" y="172" width="200" height="16" rx="3" fill="#fff8e8" stroke="#f0a500" stroke-width="1"/>
+        <text x="300" y="184" text-anchor="middle" font-size="7.5" fill="#8a5a00">Certificate is visible in plaintext here</text>
+
+        <!-- Step 3: Key exchange -->
+        <line x1="90" y1="200" x2="665" y2="215" stroke="#CC5500" stroke-width="2" marker-end="url(#tls3)"/>
+        <rect x="200" y="204" width="360" height="22" rx="3" fill="#fff3e8" stroke="#CC5500" stroke-width="1"/>
+        <text x="380" y="219" text-anchor="middle" font-size="8.5" font-weight="700" fill="#CC5500">3. Client Key Exchange + ChangeCipherSpec + Finished</text>
+        <text x="380" y="238" text-anchor="middle" font-size="7.5" fill="#888">Browser sends encrypted pre-master secret. Encryption begins.</text>
+
+        <!-- Step 4: Server Finished -->
+        <line x1="670" y1="255" x2="95" y2="270" stroke="#3a7fc1" stroke-width="2" marker-end="url(#tls4)"/>
+        <rect x="200" y="258" width="360" height="22" rx="3" fill="#eef5fb" stroke="#3a7fc1" stroke-width="1"/>
+        <text x="380" y="273" text-anchor="middle" font-size="8.5" font-weight="700" fill="#3a7fc1">4. ChangeCipherSpec + Finished</text>
+        <text x="380" y="292" text-anchor="middle" font-size="7.5" fill="#888">Both sides confirm encryption is active. Handshake complete.</text>
+
+        <!-- Step 5: Encrypted HTTP -->
+        <line x1="90" y1="315" x2="665" y2="330" stroke="#2a8a2a" stroke-width="2" marker-end="url(#tls5)"/>
+        <rect x="200" y="318" width="360" height="22" rx="3" fill="#f0faf0" stroke="#3aaa3a" stroke-width="1.5"/>
+        <text x="380" y="333" text-anchor="middle" font-size="8.5" font-weight="700" fill="#2a8a2a">5. Encrypted HTTP Application Data</text>
+        <text x="380" y="360" text-anchor="middle" font-size="7.5" fill="#888">All HTTP headers, body, cookies are now encrypted. Invisible without SSL inspection.</text>
+
+        <defs>
+          <marker id="tls1" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#CC5500"/></marker>
+          <marker id="tls2" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#3a7fc1"/></marker>
+          <marker id="tls3" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#CC5500"/></marker>
+          <marker id="tls4" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#3a7fc1"/></marker>
+          <marker id="tls5" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#2a8a2a"/></marker>
+        </defs>
+      </svg>
+      <div class="diagram-caption">The TLS handshake establishes encrypted communication. Steps 1 and 2 are visible in plaintext and contain useful intelligence: the SNI (hostname) and the server certificate.</div>
+    </div>
+
+    <h3>What Is Visible Without SSL Inspection</h3>
+    <p>Even without decrypting TLS traffic, Sophos and Wazuh can extract the following fields from the handshake packets:</p>
+    <table class="field-table">
+      <thead><tr><th>Field</th><th>Where It Comes From</th><th>Example</th><th>Analyst Value</th></tr></thead>
+      <tbody>
+        <tr><td>tls.sni</td><td>ClientHello (plaintext)</td><td>evil-c2.example.com</td><td>The hostname the client intended to connect to. Visible even without decryption. Compare against threat intel.</td></tr>
+        <tr><td>tls.cert.subject</td><td>Server Certificate (plaintext)</td><td>CN=*.example.com</td><td>Identity claimed by the server. A self-signed cert on a corporate server is unusual.</td></tr>
+        <tr><td>tls.cert.issuer</td><td>Server Certificate (plaintext)</td><td>Let's Encrypt Authority X3</td><td>Who issued the cert. Unknown CA or expired cert is suspicious.</td></tr>
+        <tr><td>tls.cert.not_after</td><td>Server Certificate (plaintext)</td><td>2026-12-01</td><td>Expiry date. Expired cert = misconfiguration. Far-future expiry on new domain = staging for attack.</td></tr>
+        <tr><td>tls.version</td><td>Handshake (plaintext)</td><td>TLSv1.3</td><td>Old versions (TLS 1.0, 1.1, SSLv3) are vulnerable. Flag any negotiation of deprecated versions.</td></tr>
+        <tr><td>tls.cipher_suite</td><td>ServerHello (plaintext)</td><td>TLS_AES_256_GCM_SHA384</td><td>Weak cipher suites (RC4, 3DES, MD5) are red flags.</td></tr>
+        <tr><td>ja3</td><td>ClientHello fingerprint</td><td>769,47-53-5-10-49161...</td><td>A hash of TLS parameters. Consistent across requests from the same tool. Used to fingerprint malware families.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>Certificate Chains: How Trust Works</h2>
+    <p>A TLS certificate is a digital document signed by a trusted authority that proves a server is who it claims to be. Your browser trusts certificates because they chain back to a <strong>root certificate authority</strong> (Root CA) that is pre-installed in your operating system.</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">Certificate Chain - From Root CA to End Entity</div>
+      <svg viewBox="0 0 700 220" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <rect x="250" y="10" width="200" height="45" rx="6" fill="#f5f0fa" stroke="#9b59b6" stroke-width="2"/>
+        <text x="350" y="30" text-anchor="middle" font-size="10" font-weight="700" fill="#7b29b6">Root CA</text>
+        <text x="350" y="46" text-anchor="middle" font-size="8" fill="#555">DigiCert / Let's Encrypt / Sectigo</text>
+        <text x="350" y="58" text-anchor="middle" font-size="7" fill="#888">Trusted by OS. Self-signed.</text>
+
+        <line x1="350" y1="55" x2="350" y2="80" stroke="#9b59b6" stroke-width="2" marker-end="url(#ca1)"/>
+        <text x="360" y="72" font-size="8" fill="#888">signs</text>
+
+        <rect x="220" y="80" width="260" height="45" rx="6" fill="#eef5fb" stroke="#3a7fc1" stroke-width="2"/>
+        <text x="350" y="100" text-anchor="middle" font-size="10" font-weight="700" fill="#3a7fc1">Intermediate CA</text>
+        <text x="350" y="116" text-anchor="middle" font-size="8" fill="#555">DigiCert TLS RSA SHA256 2020 CA1</text>
+        <text x="350" y="128" text-anchor="middle" font-size="7" fill="#888">Issued by Root CA, signs end-entity certs</text>
+
+        <line x1="350" y1="125" x2="350" y2="150" stroke="#3a7fc1" stroke-width="2" marker-end="url(#ca2)"/>
+        <text x="360" y="142" font-size="8" fill="#888">signs</text>
+
+        <rect x="180" y="150" width="340" height="55" rx="6" fill="#fff3e8" stroke="#CC5500" stroke-width="2"/>
+        <text x="350" y="172" text-anchor="middle" font-size="10" font-weight="700" fill="#CC5500">End-Entity Certificate</text>
+        <text x="350" y="187" text-anchor="middle" font-size="8" fill="#555">CN=shop.example.com</text>
+        <text x="350" y="199" text-anchor="middle" font-size="7" fill="#888">The actual cert the web server presents. Browser verifies it chains to a trusted Root CA.</text>
+
+        <defs>
+          <marker id="ca1" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#9b59b6"/></marker>
+          <marker id="ca2" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#3a7fc1"/></marker>
+        </defs>
+      </svg>
+      <div class="diagram-caption">The certificate chain must trace back to a root CA trusted by the browser's OS. A break in the chain, an expired certificate, or an unknown root CA all cause browser warnings.</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Sophos SSL Inspection</h2>
+    <p>By default, Sophos cannot read the content of HTTPS traffic because it is encrypted. <strong>SSL inspection</strong> (also called TLS interception or SSL decryption) is a feature where Sophos acts as a <strong>man-in-the-middle</strong> between the browser and the server. It decrypts the traffic, inspects it, then re-encrypts it before forwarding.</p>
+    <p>For SSL inspection to work without browser warnings, the Sophos firewall's own certificate must be installed as a trusted CA on all managed devices. This is typically done via group policy in enterprise environments.</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">Sophos SSL Inspection Architecture</div>
+      <svg viewBox="0 0 820 200" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <rect x="10" y="70" width="110" height="60" rx="6" fill="#fff3e8" stroke="#CC5500" stroke-width="2"/>
+        <text x="65" y="96" text-anchor="middle" font-size="9" font-weight="700" fill="#CC5500">Browser</text>
+        <text x="65" y="111" text-anchor="middle" font-size="7.5" fill="#555">TLS to Sophos</text>
+        <text x="65" y="124" text-anchor="middle" font-size="7" fill="#888">Sophos cert trusted</text>
+
+        <line x1="120" y1="100" x2="185" y2="100" stroke="#CC5500" stroke-width="2" marker-end="url(#ssl1)"/>
+        <text x="152" y="92" text-anchor="middle" font-size="7" fill="#CC5500">TLS Session 1</text>
+        <text x="152" y="113" text-anchor="middle" font-size="7" fill="#888">(encrypted)</text>
+
+        <rect x="185" y="50" width="180" height="100" rx="6" fill="#eef5fb" stroke="#3a7fc1" stroke-width="2"/>
+        <text x="275" y="80" text-anchor="middle" font-size="10" font-weight="700" fill="#3a7fc1">Sophos Firewall</text>
+        <text x="275" y="96" text-anchor="middle" font-size="8" fill="#555">Decrypts TLS Session 1</text>
+        <text x="275" y="110" text-anchor="middle" font-size="8" fill="#CC5500" font-weight="700">Reads full HTTP plaintext</text>
+        <text x="275" y="124" text-anchor="middle" font-size="8" fill="#555">Runs IPS + DLP rules</text>
+        <text x="275" y="138" text-anchor="middle" font-size="8" fill="#555">Re-encrypts TLS Session 2</text>
+
+        <line x1="365" y1="100" x2="440" y2="100" stroke="#3a7fc1" stroke-width="2" marker-end="url(#ssl2)"/>
+        <text x="402" y="92" text-anchor="middle" font-size="7" fill="#3a7fc1">TLS Session 2</text>
+        <text x="402" y="113" text-anchor="middle" font-size="7" fill="#888">(encrypted)</text>
+
+        <rect x="440" y="65" width="130" height="70" rx="6" fill="#f0faf0" stroke="#3aaa3a" stroke-width="2"/>
+        <text x="505" y="92" text-anchor="middle" font-size="9" font-weight="700" fill="#2a8a2a">SafeLine WAF</text>
+        <text x="505" y="107" text-anchor="middle" font-size="7.5" fill="#555">Receives decrypted</text>
+        <text x="505" y="120" text-anchor="middle" font-size="7.5" fill="#555">HTTP from Sophos</text>
+
+        <line x1="570" y1="100" x2="635" y2="100" stroke="#3aaa3a" stroke-width="2" marker-end="url(#ssl3)"/>
+
+        <rect x="635" y="70" width="110" height="60" rx="6" fill="#f5f5f5" stroke="#888" stroke-width="2"/>
+        <text x="690" y="96" text-anchor="middle" font-size="9" font-weight="700" fill="#555">Web Server</text>
+        <text x="690" y="111" text-anchor="middle" font-size="7.5" fill="#555">Receives request</text>
+
+        <text x="410" y="178" text-anchor="middle" font-size="9" fill="#CC5500" font-weight="700">With SSL inspection: Sophos reads every URL, header, cookie and body in HTTPS traffic.</text>
+        <text x="410" y="194" text-anchor="middle" font-size="8" fill="#888">Without SSL inspection: only SNI, certificate and IP/port metadata are visible.</text>
+
+        <defs>
+          <marker id="ssl1" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#CC5500"/></marker>
+          <marker id="ssl2" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#3a7fc1"/></marker>
+          <marker id="ssl3" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#3aaa3a"/></marker>
+        </defs>
+      </svg>
+      <div class="diagram-caption">Sophos acts as a transparent TLS proxy. It maintains two separate encrypted sessions and reads plaintext in the middle. SafeLine WAF downstream also sees decrypted traffic.</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>What Bettercap Does to HTTPS (Preview of Chapter 15)</h2>
+    <p>In Chapter 15 you will run a live HTTPS stripping attack using Bettercap. Here is a conceptual preview so you understand what to expect.</p>
+    <p>HTTPS stripping is an attack where the attacker intercepts the connection between the browser and server and downgrades the browser's connection from HTTPS to HTTP, while maintaining an HTTPS connection to the real server. The victim's browser thinks it is on a normal HTTP page and transmits credentials in plaintext that the attacker can read.</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">HTTPS Stripping Attack vs Normal HTTPS (Preview)</div>
+      <svg viewBox="0 0 820 180" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <!-- Normal HTTPS -->
+        <rect x="10" y="10" width="370" height="160" rx="7" fill="#f0faf0" stroke="#3aaa3a" stroke-width="2"/>
+        <text x="195" y="30" text-anchor="middle" font-size="10" font-weight="700" fill="#2a8a2a">Normal HTTPS</text>
+        <rect x="20" y="45" width="80" height="35" rx="4" fill="#fff" stroke="#3aaa3a" stroke-width="1"/>
+        <text x="60" y="65" text-anchor="middle" font-size="8" fill="#2a8a2a">Browser</text>
+        <line x1="100" y1="62" x2="185" y2="62" stroke="#2a8a2a" stroke-width="2" marker-end="url(#hs1)"/>
+        <text x="143" y="56" text-anchor="middle" font-size="7" fill="#2a8a2a">HTTPS (TLS)</text>
+        <rect x="185" y="45" width="80" height="35" rx="4" fill="#fff" stroke="#2a8a2a" stroke-width="1"/>
+        <text x="225" y="65" text-anchor="middle" font-size="8" fill="#2a8a2a">Server</text>
+        <text x="195" y="110" text-anchor="middle" font-size="8" fill="#2a8a2a">All data encrypted end to end.</text>
+        <text x="195" y="125" text-anchor="middle" font-size="8" fill="#2a8a2a">Browser shows padlock.</text>
+        <text x="195" y="150" text-anchor="middle" font-size="8" fill="#888">Sophos can inspect with SSL decryption enabled.</text>
+
+        <!-- HTTPS Stripping -->
+        <rect x="420" y="10" width="390" height="160" rx="7" fill="#fef0f0" stroke="#d63b3b" stroke-width="2"/>
+        <text x="615" y="30" text-anchor="middle" font-size="10" font-weight="700" fill="#d63b3b">HTTPS Stripping (Bettercap)</text>
+        <rect x="430" y="45" width="70" height="35" rx="4" fill="#fff" stroke="#d63b3b" stroke-width="1"/>
+        <text x="465" y="65" text-anchor="middle" font-size="8" fill="#d63b3b">Browser</text>
+        <line x1="500" y1="62" x2="555" y2="62" stroke="#f0a500" stroke-width="2" marker-end="url(#hs2)"/>
+        <text x="527" y="55" text-anchor="middle" font-size="7" fill="#f0a500">HTTP</text>
+        <text x="527" y="75" text-anchor="middle" font-size="7" fill="#d63b3b">PLAINTEXT</text>
+        <rect x="555" y="38" width="80" height="50" rx="4" fill="#fef0f0" stroke="#d63b3b" stroke-width="2"/>
+        <text x="595" y="60" text-anchor="middle" font-size="8" font-weight="700" fill="#d63b3b">Bettercap</text>
+        <text x="595" y="75" text-anchor="middle" font-size="7" fill="#d63b3b">Reads all</text>
+        <line x1="635" y1="62" x2="695" y2="62" stroke="#3a7fc1" stroke-width="2" marker-end="url(#hs3)"/>
+        <text x="665" y="55" text-anchor="middle" font-size="7" fill="#3a7fc1">HTTPS</text>
+        <rect x="695" y="45" width="70" height="35" rx="4" fill="#fff" stroke="#3a7fc1" stroke-width="1"/>
+        <text x="730" y="65" text-anchor="middle" font-size="8" fill="#3a7fc1">Server</text>
+        <text x="615" y="112" text-anchor="middle" font-size="8" fill="#d63b3b">Wazuh detects ARP changes.</text>
+        <text x="615" y="126" text-anchor="middle" font-size="8" fill="#d63b3b">Sophos may log unexpected plain HTTP.</text>
+        <text x="615" y="150" text-anchor="middle" font-size="8" fill="#888">Browser may show no warning if HSTS is not set.</text>
+
+        <defs>
+          <marker id="hs1" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#2a8a2a"/></marker>
+          <marker id="hs2" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#f0a500"/></marker>
+          <marker id="hs3" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#3a7fc1"/></marker>
+        </defs>
+      </svg>
+      <div class="diagram-caption">In an HTTPS stripping attack, the victim's browser communicates over plain HTTP to the attacker, who relays the traffic to the real server over HTTPS. The victim's credentials are visible to the attacker.</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>TLS Log Fields: Sophos and Wazuh</h2>
+    <div class="log-label">Sophos SSL/TLS Log Entry</div>
+    <div class="log-block">
+<span class="log-key">date</span>=<span class="log-val">2026-09-20</span> <span class="log-key">time</span>=<span class="log-val">11:14:08</span>
+<span class="log-key">log_type</span>=<span class="log-val">"SSL"</span> <span class="log-key">log_subtype</span>=<span class="log-val">"Connection"</span>
+<span class="log-key">src_ip</span>=<span class="log-val">10.0.0.5</span> <span class="log-key">dst_ip</span>=<span class="log-hl">185.199.108.153</span>
+<span class="log-key">dst_port</span>=<span class="log-val">443</span>
+<span class="log-key">tls_version</span>=<span class="log-val">"TLSv1.3"</span>
+<span class="log-key">sni</span>=<span class="log-hl">evil-domain.example.com</span>
+<span class="log-key">cert_cn</span>=<span class="log-val">"evil-domain.example.com"</span>
+<span class="log-key">cert_issuer</span>=<span class="log-val">"Let's Encrypt"</span>
+<span class="log-key">cert_valid_to</span>=<span class="log-val">"2026-12-01"</span>
+<span class="log-key">action</span>=<span class="log-val">"Allowed"</span>
+<span class="log-key">ssl_inspected</span>=<span class="log-val">"Yes"</span>
+<span class="log-key">ja3</span>=<span class="log-hl">769,49196-49195-49200...</span>
+    </div>
+
+    <table class="field-table">
+      <thead><tr><th>Field</th><th>Type</th><th>Example</th><th>Analyst Meaning</th></tr></thead>
+      <tbody>
+        <tr><td>sni</td><td>string</td><td>evil-domain.example.com</td><td>Hostname the client intended to reach. Always check against threat intel even if traffic is allowed.</td></tr>
+        <tr><td>cert_cn</td><td>string</td><td>*.example.com</td><td>Common name on the certificate. Wildcard certs covering too many subdomains are worth noting.</td></tr>
+        <tr><td>cert_issuer</td><td>string</td><td>Let's Encrypt</td><td>Who issued the cert. Let's Encrypt is free and commonly used by both legitimate sites and malware C2.</td></tr>
+        <tr><td>cert_valid_to</td><td>date</td><td>2026-12-01</td><td>Expiry. Expired cert = alert. Cert expiring soon on critical service = escalate to operations.</td></tr>
+        <tr><td>tls_version</td><td>string</td><td>TLSv1.3</td><td>Flag TLS 1.0, 1.1, SSLv3. These are deprecated and vulnerable.</td></tr>
+        <tr><td>ssl_inspected</td><td>boolean</td><td>Yes</td><td>Whether Sophos decrypted the traffic. If No, only metadata is available.</td></tr>
+        <tr><td>ja3</td><td>string</td><td>769,49196-49195...</td><td>TLS fingerprint of the client. Consistent fingerprints can identify specific malware families.</td></tr>
+        <tr><td>action</td><td>string</td><td>Allowed / Blocked</td><td>Whether Sophos permitted the TLS connection. Block if cert is invalid, expired, or matches threat feed.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="takeaways">
+    <h2>Key Takeaways</h2>
+    <ul>
+      <li>HTTPS encrypts traffic but does not guarantee the server is safe or legitimate. Attackers use HTTPS just as commonly as defenders.</li>
+      <li>The TLS handshake leaks two key pieces of intelligence in plaintext: the SNI (hostname) and the server certificate. These are always available without SSL inspection.</li>
+      <li>Sophos SSL inspection decrypts HTTPS, inspects the HTTP content, then re-encrypts. This requires the Sophos certificate to be trusted on managed endpoints.</li>
+      <li>The JA3 fingerprint identifies the TLS client software. It is consistent across connections from the same tool or malware family and is a powerful detection signal.</li>
+      <li>HTTPS stripping attacks downgrade the browser connection to plain HTTP. Wazuh can detect the underlying ARP spoofing, and Sophos can log unexpected plain HTTP on port 443.</li>
+      <li>Key TLS log fields: sni, cert_issuer, tls_version, ja3, ssl_inspected. Always check SNI against threat intelligence, even for allowed connections.</li>
+    </ul>
+  </div>
+
+</main>
+
+<nav class="chapter-nav" style="margin-top:0;">
+  <a class="nav-home" href="index.html">Home</a>
+  <a href="06-reading-the-browser.html">&larr; Chapter 05</a>
+  <span class="chapter-nav-spacer"></span>
+  <a href="08-reading-logs.html">Next: Reading Logs Like an Analyst &rarr;</a>
+</nav>
+
+</body>
+</html>

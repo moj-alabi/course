@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 12 - Sophos Forensics | Shef Labs</title>
+  <link rel="stylesheet" href="../../style.css" />
+</head>
+<body>
+<header class="site-header">
+  <a class="logo" href="../../index.html">
+    <div class="logo-mark"><img src="../../SLCA.png" alt="SLCA" style="width:100%;height:100%;object-fit:contain;" /></div>
+    <div><div class="logo-text">Shef<span>Labs</span></div><div class="header-subtitle">Cyber Academy</div></div>
+  </a>
+  <div style="font-size:0.85rem; color:#888;">Packet Forensics and Network Telemetry</div>
+</header>
+<nav class="chapter-nav">
+  <a class="nav-home" href="index.html">Home</a>
+  <a href="12-safeline-deep-dive.html">&larr; Chapter 11</a>
+  <span class="chapter-nav-spacer"></span>
+  <span class="chapter-label">Chapter 13 of 18</span>
+  <a href="14-grafana-dashboards.html">Next: Grafana Dashboards &rarr;</a>
+</nav>
+<main class="page-wrapper">
+
+  <div class="chapter-header">
+    <div class="chapter-number">Chapter 13</div>
+    <h1>Sophos Forensics</h1>
+    <div class="chapter-tagline">Reading Sophos XGS firewall logs for incident investigations. Firewall policy logs, IPS events, application control, and the full Sophos log field taxonomy.</div>
+  </div>
+
+  <div class="objectives-box">
+    <h3>Learning Objectives</h3>
+    <ul>
+      <li>Identify the six Sophos log types and which investigations each supports</li>
+      <li>Read a Sophos firewall policy log and reconstruct the flow of an incident</li>
+      <li>Interpret Sophos IPS events and map them to attack categories</li>
+      <li>Use Sophos application control logs to detect shadow IT and data exfiltration tools</li>
+      <li>Understand how Sophos log_id values map to specific event categories</li>
+      <li>Build a Sophos log correlation query across multiple log types for one incident</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>The Six Sophos Log Types</h2>
+    <p>Sophos XGS generates six distinct log types. Each is written to a different log stream and contains different fields. Knowing which log type to look at first saves significant time during investigations.</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">Sophos Log Types and What They Cover</div>
+      <svg viewBox="0 0 820 240" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <rect x="10" y="10" width="380" height="65" rx="6" fill="#eef5fb" stroke="#3a7fc1" stroke-width="2"/>
+        <text x="22" y="32" font-size="9" font-weight="700" fill="#3a7fc1">Firewall Log (log_type="Firewall")</text>
+        <text x="22" y="48" font-size="8" fill="#555">Connection allow/deny decisions. src_ip, dst_ip, dst_port, protocol, sent_bytes, recv_bytes.</text>
+        <text x="22" y="63" font-size="7.5" fill="#888">Use for: tracing attacker movement, exfiltration detection, lateral movement scoping</text>
+
+        <rect x="420" y="10" width="380" height="65" rx="6" fill="#fef0f0" stroke="#d63b3b" stroke-width="2"/>
+        <text x="432" y="32" font-size="9" font-weight="700" fill="#d63b3b">IPS Log (log_type="IPS")</text>
+        <text x="432" y="48" font-size="8" fill="#555">Intrusion detection/prevention events. signature_id, signature_name, severity, action.</text>
+        <text x="432" y="63" font-size="7.5" fill="#888">Use for: port scans, exploit attempts, protocol violations, CVE-specific attacks</text>
+
+        <rect x="10" y="85" width="380" height="65" rx="6" fill="#f0faf0" stroke="#3aaa3a" stroke-width="2"/>
+        <text x="22" y="107" font-size="9" font-weight="700" fill="#2a8a2a">SSL Log (log_type="SSL")</text>
+        <text x="22" y="123" font-size="8" fill="#555">TLS inspection results. sni, cert_cn, cert_issuer, tls_version, ja3, ssl_inspected.</text>
+        <text x="22" y="138" font-size="7.5" fill="#888">Use for: C2 detection via SNI, expired/self-signed cert detection, JA3 fingerprinting</text>
+
+        <rect x="420" y="85" width="380" height="65" rx="6" fill="#fffbe6" stroke="#f0a500" stroke-width="2"/>
+        <text x="432" y="107" font-size="9" font-weight="700" fill="#8a5a00">Web Filter Log (log_type="Content Filtering")</text>
+        <text x="432" y="123" font-size="8" fill="#555">URL category decisions. url, category, action (allow/block), user_name.</text>
+        <text x="432" y="138" font-size="7.5" fill="#888">Use for: policy violations, malware distribution sites, phishing URL blocking</text>
+
+        <rect x="10" y="160" width="380" height="65" rx="6" fill="#f5f0fa" stroke="#9b59b6" stroke-width="2"/>
+        <text x="22" y="182" font-size="9" font-weight="700" fill="#7b29b6">App Control Log (log_type="Application Control")</text>
+        <text x="22" y="198" font-size="8" fill="#555">Application identification events. application, user_name, dst_ip, bytes_sent.</text>
+        <text x="22" y="213" font-size="7.5" fill="#888">Use for: detecting Tor, BitTorrent, remote admin tools, cloud storage uploads</text>
+
+        <rect x="420" y="160" width="380" height="65" rx="6" fill="#fef0f0" stroke="#CC5500" stroke-width="2"/>
+        <text x="432" y="182" font-size="9" font-weight="700" fill="#CC5500">Event Log (log_type="Event")</text>
+        <text x="432" y="198" font-size="8" fill="#555">Firewall admin actions. admin logins, rule changes, policy updates.</text>
+        <text x="432" y="213" font-size="7.5" fill="#888">Use for: detecting firewall rule tampering, admin account abuse, config changes during incidents</text>
+
+      </svg>
+      <div class="diagram-caption">Start with the Firewall log to scope the incident. Use IPS logs for attack confirmation. Use SSL logs for C2 detection. Use App Control for exfiltration tools.</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Reading a Sophos Firewall Policy Log</h2>
+    <p>The firewall policy log records every connection that matched a firewall rule, whether it was allowed or denied. This is the most detailed view of network activity at the perimeter.</p>
+
+    <div class="log-label">Sophos Firewall Log - Allowed Connection (potential exfiltration)</div>
+    <div class="log-block"><span class="log-key">date</span>=<span class="log-hl">2026-09-20</span> <span class="log-key">time</span>=<span class="log-hl">10:30:01</span>
+<span class="log-key">device_name</span>=<span class="log-val">"SophosXGS-HQ"</span>
+<span class="log-key">log_id</span>=<span class="log-val">010302600001</span>
+<span class="log-key">log_type</span>=<span class="log-val">"Firewall"</span>
+<span class="log-key">log_subtype</span>=<span class="log-val">"Allowed"</span>
+<span class="log-key">policy_type</span>=<span class="log-val">"Network Policy"</span>
+<span class="log-key">rule_id</span>=<span class="log-val">4</span>
+<span class="log-key">rule_name</span>=<span class="log-val">"LAN-to-WAN"</span>
+<span class="log-key">src_ip</span>=<span class="log-hl">10.0.1.10</span>
+<span class="log-key">src_mac</span>=<span class="log-val">00:1A:2B:3C:4D:5E</span>
+<span class="log-key">dst_ip</span>=<span class="log-hl">185.220.101.45</span>
+<span class="log-key">dst_port</span>=<span class="log-val">443</span>
+<span class="log-key">protocol</span>=<span class="log-val">TCP</span>
+<span class="log-key">sent_bytes</span>=<span class="log-hl">98442</span>
+<span class="log-key">recv_bytes</span>=<span class="log-val">1204</span>
+<span class="log-key">duration</span>=<span class="log-val">44</span>
+<span class="log-key">user_name</span>=<span class="log-val">"-"</span></div>
+
+    <div class="callout callout-ir">
+      <div class="callout-title">Reading This Log for Exfiltration Signs</div>
+      sent_bytes=98442 (96 KB sent out) versus recv_bytes=1204 (1.2 KB received). A normal HTTPS connection to a website sends a small request and receives a large response. This is reversed: large data going out, small response coming back. That asymmetry, combined with an unknown external IP (185.220.101.45), is a strong exfiltration indicator. The session lasted 44 seconds. Check this IP in SafeLine WAF logs, then in threat intelligence.
+    </div>
+
+    <h3>Sophos Firewall Log Field Reference</h3>
+    <table class="field-table">
+      <thead><tr><th>Field</th><th>Example</th><th>Analyst Use</th></tr></thead>
+      <tbody>
+        <tr><td>log_subtype</td><td>Allowed / Denied</td><td>Denied = firewall policy blocked it. Allowed = traffic passed. Both are useful.</td></tr>
+        <tr><td>rule_name</td><td>LAN-to-WAN</td><td>Identifies which firewall policy permitted or blocked the traffic</td></tr>
+        <tr><td>src_ip</td><td>10.0.1.10</td><td>Internal source. Check against asset inventory to identify the compromised host</td></tr>
+        <tr><td>src_mac</td><td>00:1A:2B:3C:4D:5E</td><td>MAC address confirms physical identity of source. Useful when IP is dynamic (DHCP)</td></tr>
+        <tr><td>dst_ip</td><td>185.220.101.45</td><td>External destination. Check against threat intelligence feeds</td></tr>
+        <tr><td>dst_port</td><td>443</td><td>Port 443 is HTTPS. Expected. Port 4444 or 8888 on unusual destinations = C2 indicator</td></tr>
+        <tr><td>sent_bytes</td><td>98442</td><td>Data sent from internal host to external. High value from a server = exfiltration risk</td></tr>
+        <tr><td>recv_bytes</td><td>1204</td><td>Data received from external host. High value from unknown IP = download/staging</td></tr>
+        <tr><td>duration</td><td>44</td><td>Session length in seconds. Very short = probe/scan. Very long = persistent connection</td></tr>
+        <tr><td>user_name</td><td>jsmith or "-"</td><td>Authenticated user if SSO is configured. "-" means no authenticated user identity</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>Sophos IPS Log: Confirming an Attack</h2>
+    <div class="log-label">Sophos IPS Log - Port Scan Detected and Dropped</div>
+    <div class="log-block"><span class="log-key">date</span>=<span class="log-hl">2026-09-20</span> <span class="log-key">time</span>=<span class="log-hl">10:22:14</span>
+<span class="log-key">log_type</span>=<span class="log-val">"IPS"</span>
+<span class="log-key">log_subtype</span>=<span class="log-val">"Drop"</span>
+<span class="log-key">signature_id</span>=<span class="log-hl">18487</span>
+<span class="log-key">signature_name</span>=<span class="log-val">"TCP SYN Port Scan"</span>
+<span class="log-key">severity</span>=<span class="log-val">"High"</span>
+<span class="log-key">category</span>=<span class="log-val">"Scanning"</span>
+<span class="log-key">src_ip</span>=<span class="log-hl">10.0.2.99</span>
+<span class="log-key">dst_ip</span>=<span class="log-val">10.0.1.10</span>
+<span class="log-key">src_port</span>=<span class="log-val">45231</span>
+<span class="log-key">dst_port</span>=<span class="log-val">22</span>
+<span class="log-key">protocol</span>=<span class="log-val">TCP</span>
+<span class="log-key">platform</span>=<span class="log-val">"Linux"</span>
+<span class="log-key">cve</span>=<span class="log-val">"-"</span></div>
+
+    <table class="field-table">
+      <thead><tr><th>IPS Field</th><th>Example</th><th>Analyst Use</th></tr></thead>
+      <tbody>
+        <tr><td>signature_id</td><td>18487</td><td>Unique ID for the matched IPS rule. Look up in Sophos threat intelligence portal for full details.</td></tr>
+        <tr><td>signature_name</td><td>TCP SYN Port Scan</td><td>Human-readable description of the attack type detected</td></tr>
+        <tr><td>severity</td><td>High</td><td>Maps to Low/Medium/High/Critical. High and Critical = immediate investigation</td></tr>
+        <tr><td>category</td><td>Scanning</td><td>Attack category: Scanning, Exploit, DoS, Brute Force, Malware, Protocol Anomaly</td></tr>
+        <tr><td>cve</td><td>CVE-2023-44487</td><td>If present, maps to a specific known vulnerability. Look up in NVD for patch information.</td></tr>
+        <tr><td>platform</td><td>Linux</td><td>Target platform the exploit is designed for. Cross-reference with actual target OS.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>Multi-Log Correlation: Reconstructing an Incident</h2>
+    <p>Real investigations require correlating events across multiple Sophos log types to build a timeline. Here is how the same incident appears across different log types.</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">Incident Timeline Across Sophos Log Types</div>
+      <svg viewBox="0 0 820 280" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <line x1="40" y1="20" x2="40" y2="270" stroke="#888" stroke-width="2"/>
+
+        <circle cx="40" cy="50" r="6" fill="#d63b3b"/>
+        <text x="58" y="45" font-size="9" font-weight="700" fill="#d63b3b">10:22:14 - IPS Log</text>
+        <text x="58" y="60" font-size="8" fill="#555">signature="TCP SYN Port Scan" src=10.0.2.99 dst=10.0.1.10 action=Drop</text>
+        <text x="58" y="72" font-size="7.5" fill="#888">RECONNAISSANCE: Attacker scanning internal host for open ports</text>
+
+        <circle cx="40" cy="105" r="6" fill="#f0a500"/>
+        <text x="58" y="100" font-size="9" font-weight="700" fill="#8a5a00">10:22:30 - Firewall Log</text>
+        <text x="58" y="115" font-size="8" fill="#555">Allowed TCP src=10.0.2.99 dst=10.0.1.10 dst_port=22 sent=412 recv=880</text>
+        <text x="58" y="127" font-size="7.5" fill="#888">INITIAL ACCESS: SSH connection allowed (scan found port 22 open)</text>
+
+        <circle cx="40" cy="160" r="6" fill="#d63b3b"/>
+        <text x="58" y="155" font-size="9" font-weight="700" fill="#d63b3b">10:30:01 - Firewall Log</text>
+        <text x="58" y="170" font-size="8" fill="#555">Allowed TCP src=10.0.1.10 dst=185.220.101.45 dst_port=443 sent=98442 recv=1204</text>
+        <text x="58" y="182" font-size="7.5" fill="#888">EXFILTRATION: Compromised host sending large data to unknown external IP</text>
+
+        <circle cx="40" cy="215" r="6" fill="#9b59b6"/>
+        <text x="58" y="210" font-size="9" font-weight="700" fill="#7b29b6">10:30:01 - SSL Log</text>
+        <text x="58" y="225" font-size="8" fill="#555">sni=evil-domain.example.com cert_issuer="Let's Encrypt" tls_version=TLSv1.3</text>
+        <text x="58" y="237" font-size="7.5" fill="#888">C2 CONFIRMATION: SNI reveals command-and-control domain used during exfiltration</text>
+
+        <circle cx="40" cy="263" r="6" fill="#CC5500"/>
+        <text x="58" y="258" font-size="9" font-weight="700" fill="#CC5500">10:31:00 - App Control Log</text>
+        <text x="58" y="273" font-size="8" fill="#555">application="Tor Browser" src=10.0.1.10 user="-" bytes_sent=450000 action=Blocked</text>
+
+      </svg>
+      <div class="diagram-caption">Four log types, one incident timeline. IPS saw the scan, Firewall saw the SSH connection and exfiltration, SSL revealed the C2 domain, App Control blocked the Tor attempt.</div>
+    </div>
+  </div>
+
+  <div class="takeaways">
+    <h2>Key Takeaways</h2>
+    <ul>
+      <li>Sophos produces six distinct log types: Firewall, IPS, SSL, Web Filter, Application Control, and Event. Start with Firewall for scoping, add IPS for attack confirmation, add SSL for C2 domain discovery.</li>
+      <li>The sent_bytes vs recv_bytes ratio in Firewall logs is one of the most reliable exfiltration indicators. Normal web browsing has low sent/high received. Exfiltration has high sent/low received.</li>
+      <li>IPS logs include a signature_id that maps to a detailed threat description and often a CVE number. Always look up the CVE to understand the vulnerability being exploited.</li>
+      <li>SSL logs provide the SNI (hostname) of every TLS connection even without decryption. This is your primary tool for C2 domain detection when SSL inspection is not enabled.</li>
+      <li>Multi-log correlation across IPS, Firewall, and SSL logs is the standard method for reconstructing the full attack timeline in a Sophos environment.</li>
+    </ul>
+  </div>
+
+</main>
+<nav class="chapter-nav" style="margin-top:0;">
+  <a class="nav-home" href="index.html">Home</a>
+  <a href="12-safeline-deep-dive.html">&larr; Chapter 11</a>
+  <span class="chapter-nav-spacer"></span>
+  <a href="14-grafana-dashboards.html">Next: Grafana Dashboards &rarr;</a>
+</nav>
+</body>
+</html>

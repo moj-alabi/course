@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 01 - The Life of a Packet | Shef Labs</title>
+  <link rel="stylesheet" href="../../style.css" />
+  <style>
+    .osi-badge { display:inline-block; padding:2px 8px; border-radius:12px; font-size:0.72rem; font-weight:700; margin-right:4px; vertical-align:middle; }
+    .osi-l2  { background:#e8f5e9; color:#2a6a2a; border:1px solid #2a6a2a; }
+    .osi-l3  { background:#e3f2fd; color:#1a5fa1; border:1px solid #1a5fa1; }
+    .osi-l4  { background:#fff3e0; color:#b34000; border:1px solid #b34000; }
+    .osi-l567{ background:#f3e5f5; color:#6a1b9a; border:1px solid #6a1b9a; }
+    .osi-l7  { background:#fce4ec; color:#b71c1c; border:1px solid #b71c1c; }
+    .osi-row { display:flex; align-items:flex-start; gap:1rem; padding:0.75rem 0; border-bottom:1px solid #eee; }
+    .osi-row:last-child { border-bottom:none; }
+    .osi-layer-box { min-width:130px; padding:6px 12px; border-radius:6px; text-align:center; font-weight:700; font-size:0.8rem; flex-shrink:0; }
+    .osi-detail { flex:1; font-size:0.88rem; }
+    .osi-detail strong { display:block; margin-bottom:0.25rem; }
+  </style>
+</head>
+<body>
+<header class="site-header">
+  <a class="logo" href="../../index.html">
+    <div class="logo-mark"><img src="../../SLCA.png" alt="SLCA" style="width:100%;height:100%;object-fit:contain;" /></div>
+    <div><div class="logo-text">Shef<span>Labs</span></div><div class="header-subtitle">Cyber Academy</div></div>
+  </a>
+  <div style="font-size:0.85rem;color:#888;">Packet Forensics and Network Telemetry</div>
+</header>
+
+<nav class="chapter-nav">
+  <a class="nav-home" href="index.html">Home</a>
+  <span style="color:#888; font-size:0.85rem;">Start of course</span>
+  <span class="chapter-nav-spacer"></span>
+  <span class="chapter-label">Chapter 01 of 18</span>
+  <a href="02-following-the-flow.html">Next: Following the Flow &rarr;</a>
+</nav>
+
+<main class="page-wrapper">
+
+  <div class="chapter-header">
+    <div class="chapter-number">Chapter 01</div>
+    <h1>The Life of a Packet</h1>
+    <div class="chapter-tagline">From application to wire and back again. The OSI model explained in plain English, with every layer mapped to the tools and attacks that operate there.</div>
+  </div>
+
+  <div class="objectives-box">
+    <h3>Learning Objectives</h3>
+    <ul>
+      <li>Explain what a packet is and why data is split into packets at all</li>
+      <li>Name all seven OSI layers and describe in one sentence what each one does</li>
+      <li>Identify which layer each tool in this course operates at (Sophos, SafeLine, Wazuh, Wireshark)</li>
+      <li>Explain why the layer an attack targets determines which tools can detect and stop it</li>
+      <li>Describe what encapsulation means and how it relates to headers</li>
+      <li>Use the OSI model as a diagnostic framework when a network problem or attack is reported</li>
+    </ul>
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="section">
+    <h2>What is a Packet?</h2>
+    <p>When you send a letter, you write your message on paper, fold it, and seal it inside an envelope. On the outside you write the recipient's address and your own return address. You add a stamp, hand it to the postal service, and the postal service reads the address, routes the envelope through sorting offices, and delivers it to the correct door. The person at the other end opens the envelope and reads the letter inside.</p>
+
+    <p>A network packet works exactly the same way. The table below maps every part of the physical letter to its digital equivalent:</p>
+
+    <table class="field-table">
+      <thead><tr><th>Physical (letter post)</th><th>Digital (network packet)</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>The letter inside the envelope</td>
+          <td>The <strong>payload</strong> - the actual data being sent (part of a file, a web page, a video frame)</td>
+        </tr>
+        <tr>
+          <td>The envelope itself</td>
+          <td>The <strong>packet</strong> - a container that wraps the payload and carries all the addressing information</td>
+        </tr>
+        <tr>
+          <td>The recipient's address on the envelope</td>
+          <td>The <strong>destination IP address</strong> in the packet header - where the packet needs to be delivered</td>
+        </tr>
+        <tr>
+          <td>Your return address on the envelope</td>
+          <td>The <strong>source IP address</strong> in the packet header - where replies should be sent back to</td>
+        </tr>
+        <tr>
+          <td>The stamp</td>
+          <td>The <strong>TTL (Time To Live)</strong> field - a number set by the sender that is decremented by 1 at every router. When it reaches zero the packet is discarded. This prevents a lost or looping packet from circulating on the internet forever.</td>
+        </tr>
+        <tr>
+          <td>The postal sorting office</td>
+          <td>A <strong>router</strong> - reads the destination address and decides which direction to forward the packet next</td>
+        </tr>
+        <tr>
+          <td>The postman's final delivery round</td>
+          <td>The <strong>last-hop network</strong> - the final cable or Wi-Fi link to the destination device</td>
+        </tr>
+        <tr>
+          <td>Opening the envelope and reading the letter</td>
+          <td>The <strong>receiving application</strong> unwrapping the packet and reading the payload</td>
+        </tr>
+        <tr>
+          <td>One letter per envelope, numbered in sequence</td>
+          <td>The <strong>sequence number</strong> in the packet header - used to reassemble packets in the correct order at the destination</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>One important difference from a physical letter: when your computer sends data over a network, that data is usually too large to fit in a single packet. It gets split into many separate packets, each numbered in sequence. Every packet travels independently and may take a different route. At the destination, the sequence numbers are used to put everything back together in the correct order. A packet is one of those numbered envelopes.</p>
+
+    <p>When you load a web page, your computer does not send one giant blob of data. It breaks the request into small chunks called <strong>packets</strong>, each typically between 40 and 1500 bytes in size. Each packet travels independently across the network, may take a different route, and is reassembled at the destination. This approach has three major advantages:</p>
+
+    <ul>
+      <li><strong>Reliability:</strong> If one packet is lost in transit, only that packet is re-sent, not the entire message.</li>
+      <li><strong>Efficiency:</strong> Many users can share the same network links simultaneously because packets from different conversations interleave freely.</li>
+      <li><strong>Resilience:</strong> Packets can route around failures automatically because each one finds its own path.</li>
+    </ul>
+
+    <div class="callout callout-info">
+      <div class="callout-title">Why This Matters to an Analyst</div>
+      When you look at a capture in Wireshark, you are looking at individual packets. When you read a Sophos firewall log, each row represents a decision made about one packet or flow. Understanding that all network data is broken into packets is the foundational concept everything else in this course builds on.
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="section">
+    <h2>The OSI Model: The Master Reference</h2>
+    <p>The <strong>OSI model</strong> (Open Systems Interconnection model) is a framework that divides the job of "sending data across a network" into seven separate layers. Each layer has one specific job. Each layer only talks to the layers directly above and below it.</p>
+
+    <p>Think of it like a postal service. There are people who write letters (Layer 7, the application), people who put letters in envelopes (Layer 6), people who sort the envelopes by postcode (Layer 3), people who drive the vans (Layer 2), and the actual roads the vans drive on (Layer 1). Each person has one job and does not need to know the details of every other job.</p>
+
+    <p>The model matters to security analysts because <strong>different attacks target different layers</strong>, and <strong>different tools defend different layers</strong>. Knowing which layer an attack operates at immediately tells you which evidence to look for and which tool will have seen it.</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">The OSI Model - Every Layer, Tool, and Attack Type Mapped</div>
+      <svg viewBox="0 0 860 420" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <!-- Column headers -->
+        <text x="5"   y="18" font-size="9" font-weight="700" fill="#555">Layer</text>
+        <text x="75"  y="18" font-size="9" font-weight="700" fill="#555">Name</text>
+        <text x="185" y="18" font-size="9" font-weight="700" fill="#555">What it does</text>
+        <text x="385" y="18" font-size="9" font-weight="700" fill="#555">Protocol examples</text>
+        <text x="510" y="18" font-size="9" font-weight="700" fill="#555">Attacks at this layer</text>
+        <text x="680" y="18" font-size="9" font-weight="700" fill="#555">Tools that see this</text>
+        <line x1="0" y1="22" x2="860" y2="22" stroke="#ddd" stroke-width="1"/>
+
+        <!-- L7 Application -->
+        <rect x="0" y="25" width="860" height="52" rx="3" fill="#fff0f0"/>
+        <rect x="0" y="25" width="68" height="52" rx="3" fill="#d63b3b"/>
+        <text x="34" y="49" text-anchor="middle" font-size="20" font-weight="900" fill="#fff">7</text>
+        <text x="34" y="68" text-anchor="middle" font-size="8" fill="#ffe">Application</text>
+        <text x="78"  y="42" font-size="9" font-weight="700" fill="#b71c1c">Application</text>
+        <text x="78"  y="55" font-size="8" fill="#333">The actual program creating</text>
+        <text x="78"  y="66" font-size="8" fill="#333">or consuming the data</text>
+        <text x="188" y="42" font-size="8" fill="#333">HTTP, HTTPS, DNS,</text>
+        <text x="188" y="54" font-size="8" fill="#333">SSH, FTP, SMTP</text>
+        <text x="188" y="66" font-size="8" fill="#333">IMAP, RDP, SIP</text>
+        <text x="513" y="42" font-size="8" fill="#d63b3b">SQLi, XSS, Path Traversal,</text>
+        <text x="513" y="54" font-size="8" fill="#d63b3b">Command Injection, CSRF,</text>
+        <text x="513" y="66" font-size="8" fill="#d63b3b">Web scraping, Dir brute force</text>
+        <text x="683" y="42" font-size="8" fill="#333">SafeLine WAF, Wazuh,</text>
+        <text x="683" y="54" font-size="8" fill="#333">Wireshark (TCP stream),</text>
+        <text x="683" y="66" font-size="8" fill="#333">Grafana dashboards</text>
+
+        <!-- L6 Presentation -->
+        <rect x="0" y="79" width="860" height="42" rx="3" fill="#fff5f0"/>
+        <rect x="0" y="79" width="68" height="42" rx="3" fill="#e8520a"/>
+        <text x="34" y="101" text-anchor="middle" font-size="20" font-weight="900" fill="#fff">6</text>
+        <text x="34" y="115" text-anchor="middle" font-size="8" fill="#ffe">Presentation</text>
+        <text x="78"  y="96" font-size="9" font-weight="700" fill="#a33a00">Presentation</text>
+        <text x="78"  y="109" font-size="8" fill="#333">Encoding, encryption,</text>
+        <text x="78"  y="120" font-size="8" fill="#333">compression of data</text>
+        <text x="188" y="96" font-size="8" fill="#333">TLS/SSL, JPEG, MPEG,</text>
+        <text x="188" y="108" font-size="8" fill="#333">ASCII, Unicode, Base64</text>
+        <text x="513" y="96" font-size="8" fill="#d63b3b">TLS downgrade, HTTPS stripping,</text>
+        <text x="513" y="108" font-size="8" fill="#d63b3b">Weak cipher exploitation</text>
+        <text x="683" y="96" font-size="8" fill="#333">Sophos SSL inspection,</text>
+        <text x="683" y="108" font-size="8" fill="#333">Wireshark TLS dissector</text>
+
+        <!-- L5 Session -->
+        <rect x="0" y="123" width="860" height="42" rx="3" fill="#fffbf0"/>
+        <rect x="0" y="123" width="68" height="42" rx="3" fill="#d4a000"/>
+        <text x="34" y="145" text-anchor="middle" font-size="20" font-weight="900" fill="#fff">5</text>
+        <text x="34" y="159" text-anchor="middle" font-size="8" fill="#fff">Session</text>
+        <text x="78"  y="140" font-size="9" font-weight="700" fill="#8a6a00">Session</text>
+        <text x="78"  y="153" font-size="8" fill="#333">Opening, maintaining,</text>
+        <text x="78"  y="164" font-size="8" fill="#333">and closing connections</text>
+        <text x="188" y="140" font-size="8" fill="#333">NetBIOS, RPC,</text>
+        <text x="188" y="152" font-size="8" fill="#333">SOCKS, SMB sessions</text>
+        <text x="513" y="140" font-size="8" fill="#d63b3b">Session hijacking,</text>
+        <text x="513" y="152" font-size="8" fill="#d63b3b">Session fixation</text>
+        <text x="683" y="140" font-size="8" fill="#333">Wazuh (auth events),</text>
+        <text x="683" y="152" font-size="8" fill="#333">Sophos log correlation</text>
+
+        <!-- L4 Transport -->
+        <rect x="0" y="167" width="860" height="52" rx="3" fill="#fff3e0"/>
+        <rect x="0" y="167" width="68" height="52" rx="3" fill="#b34000"/>
+        <text x="34" y="191" text-anchor="middle" font-size="20" font-weight="900" fill="#fff">4</text>
+        <text x="34" y="210" text-anchor="middle" font-size="8" fill="#ffe">Transport</text>
+        <text x="78"  y="184" font-size="9" font-weight="700" fill="#8a3000">Transport</text>
+        <text x="78"  y="197" font-size="8" fill="#333">End-to-end delivery using</text>
+        <text x="78"  y="208" font-size="8" fill="#333">port numbers. TCP ensures</text>
+        <text x="78"  y="219" font-size="8" fill="#333">reliability, UDP does not.</text>
+        <text x="188" y="184" font-size="8" fill="#333">TCP (ports 0-65535),</text>
+        <text x="188" y="196" font-size="8" fill="#333">UDP (DNS:53, DHCP:67,</text>
+        <text x="188" y="208" font-size="8" fill="#333">NTP:123, Syslog:514)</text>
+        <text x="513" y="184" font-size="8" fill="#d63b3b">SYN flood DDoS, TCP RST injection,</text>
+        <text x="513" y="196" font-size="8" fill="#d63b3b">Port scanning, SSH brute force,</text>
+        <text x="513" y="208" font-size="8" fill="#d63b3b">UDP amplification DDoS</text>
+        <text x="683" y="184" font-size="8" fill="#333">Sophos IPS (TCP anomalies),</text>
+        <text x="683" y="196" font-size="8" fill="#333">Wazuh (connection logs),</text>
+        <text x="683" y="208" font-size="8" fill="#333">Wireshark (all TCP flags)</text>
+
+        <!-- L3 Network -->
+        <rect x="0" y="221" width="860" height="52" rx="3" fill="#e8f4ff"/>
+        <rect x="0" y="221" width="68" height="52" rx="3" fill="#1a5fa1"/>
+        <text x="34" y="245" text-anchor="middle" font-size="20" font-weight="900" fill="#fff">3</text>
+        <text x="34" y="264" text-anchor="middle" font-size="8" fill="#ddf">Network</text>
+        <text x="78"  y="238" font-size="9" font-weight="700" fill="#1a3a6a">Network</text>
+        <text x="78"  y="251" font-size="8" fill="#333">Routing packets across</text>
+        <text x="78"  y="262" font-size="8" fill="#333">networks using IP addresses.</text>
+        <text x="78"  y="273" font-size="8" fill="#333">Each packet routed independently.</text>
+        <text x="188" y="238" font-size="8" fill="#333">IPv4, IPv6, ICMP (ping),</text>
+        <text x="188" y="250" font-size="8" fill="#333">routing protocols (OSPF,</text>
+        <text x="188" y="262" font-size="8" fill="#333">BGP), IPSec</text>
+        <text x="513" y="238" font-size="8" fill="#d63b3b">IP spoofing, ICMP flood,</text>
+        <text x="513" y="250" font-size="8" fill="#d63b3b">BGP hijacking, Fragmentation</text>
+        <text x="513" y="262" font-size="8" fill="#d63b3b">attacks, Traceroute reconnaissance</text>
+        <text x="683" y="238" font-size="8" fill="#333">Sophos firewall policy,</text>
+        <text x="683" y="250" font-size="8" fill="#333">Wazuh firewall decoder,</text>
+        <text x="683" y="262" font-size="8" fill="#333">Wireshark IP layer</text>
+
+        <!-- L2 Data Link -->
+        <rect x="0" y="275" width="860" height="52" rx="3" fill="#e8f5e9"/>
+        <rect x="0" y="275" width="68" height="52" rx="3" fill="#2a7a2a"/>
+        <text x="34" y="299" text-anchor="middle" font-size="20" font-weight="900" fill="#fff">2</text>
+        <text x="34" y="318" text-anchor="middle" font-size="8" fill="#dfd">Data Link</text>
+        <text x="78"  y="292" font-size="9" font-weight="700" fill="#1a5a1a">Data Link</text>
+        <text x="78"  y="305" font-size="8" fill="#333">Transfers frames between</text>
+        <text x="78"  y="316" font-size="8" fill="#333">devices on the SAME physical</text>
+        <text x="78"  y="327" font-size="8" fill="#333">network using MAC addresses.</text>
+        <text x="188" y="292" font-size="8" fill="#333">Ethernet, ARP, VLAN (802.1Q),</text>
+        <text x="188" y="304" font-size="8" fill="#333">Wi-Fi (802.11), PPP,</text>
+        <text x="188" y="316" font-size="8" fill="#333">STP, MAC tables</text>
+        <text x="513" y="292" font-size="8" fill="#d63b3b">ARP spoofing/poisoning,</text>
+        <text x="513" y="304" font-size="8" fill="#d63b3b">MAC flooding, VLAN hopping,</text>
+        <text x="513" y="316" font-size="8" fill="#d63b3b">Rogue access points</text>
+        <text x="683" y="292" font-size="8" fill="#333">Wireshark (Ethernet/ARP),</text>
+        <text x="683" y="304" font-size="8" fill="#333">Wazuh ARP alerts,</text>
+        <text x="683" y="316" font-size="8" fill="#333">Switch-level DAI (not covered)</text>
+
+        <!-- L1 Physical -->
+        <rect x="0" y="329" width="860" height="42" rx="3" fill="#f5f5f5"/>
+        <rect x="0" y="329" width="68" height="42" rx="3" fill="#555"/>
+        <text x="34" y="351" text-anchor="middle" font-size="20" font-weight="900" fill="#fff">1</text>
+        <text x="34" y="365" text-anchor="middle" font-size="8" fill="#ddd">Physical</text>
+        <text x="78"  y="346" font-size="9" font-weight="700" fill="#333">Physical</text>
+        <text x="78"  y="359" font-size="8" fill="#333">The actual wire, fibre,</text>
+        <text x="78"  y="370" font-size="8" fill="#333">or radio signal</text>
+        <text x="188" y="346" font-size="8" fill="#333">Ethernet cable, fibre,</text>
+        <text x="188" y="358" font-size="8" fill="#333">Wi-Fi radio, USB</text>
+        <text x="513" y="346" font-size="8" fill="#888">Physical wiretapping, hardware</text>
+        <text x="513" y="358" font-size="8" fill="#888">keyloggers (out of scope)</text>
+        <text x="683" y="346" font-size="8" fill="#888">Physical security controls</text>
+        <text x="683" y="358" font-size="8" fill="#888">(out of scope for this course)</text>
+
+        <!-- Divider lines between columns -->
+        <line x1="70"  y1="25" x2="70"  y2="371" stroke="#ddd" stroke-width="0.5"/>
+        <line x1="180" y1="25" x2="180" y2="371" stroke="#ddd" stroke-width="0.5"/>
+        <line x1="380" y1="25" x2="380" y2="371" stroke="#ddd" stroke-width="0.5"/>
+        <line x1="508" y1="25" x2="508" y2="371" stroke="#ddd" stroke-width="0.5"/>
+        <line x1="678" y1="25" x2="678" y2="371" stroke="#ddd" stroke-width="0.5"/>
+
+        <!-- Sidebar labels -->
+        <text x="853" y="120" text-anchor="middle" font-size="8" font-weight="700" fill="#666" transform="rotate(90, 853, 120)">Upper Layers (Software)</text>
+        <text x="853" y="280" text-anchor="middle" font-size="8" font-weight="700" fill="#666" transform="rotate(90, 853, 280)">Lower Layers (Hardware/Network)</text>
+
+      </svg>
+      <div class="diagram-caption">This is your master reference for the whole course. Every attack covered in this course is listed here. Every tool is positioned at the layer it operates on. Bookmark this page and return to it whenever you ask "why can this tool see this attack but not that one?"</div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="section">
+    <h2>The Seven Layers Explained</h2>
+    <p>Here is each layer in plain English, with the detail an analyst actually needs.</p>
+
+    <div class="osi-row">
+      <div class="osi-layer-box" style="background:#fff0f0; color:#b71c1c; border:2px solid #d63b3b;">Layer 7<br/>Application</div>
+      <div class="osi-detail">
+        <strong>The program itself. The human-readable content.</strong>
+        This is what the user actually sees and what the attacker actually wants. A web browser is a Layer 7 application. When you type a URL and press Enter, your browser creates an HTTP request at Layer 7. The content of that request (the URL path, the query string, the form fields) is the Layer 7 data. SQL injection attacks, cross-site scripting, and directory brute force are all Layer 7 attacks because they abuse the application's logic using valid protocol messages. The <strong>SafeLine WAF</strong> and <strong>Wazuh</strong> are your primary Layer 7 defenders.
+      </div>
+    </div>
+
+    <div class="osi-row">
+      <div class="osi-layer-box" style="background:#fff5f0; color:#a33a00; border:2px solid #e8520a;">Layer 6<br/>Presentation</div>
+      <div class="osi-detail">
+        <strong>How data is formatted, encoded, and encrypted.</strong>
+        Layer 6 is responsible for turning application data into a format suitable for transmission and back again. TLS (the protocol that makes HTTPS work) lives here. When you see the padlock in your browser, Layer 6 is encrypting your data. The practical security implication: <strong>encryption happens at Layer 6, which means a firewall operating at Layer 3 or 4 cannot read the contents of HTTPS traffic.</strong> Sophos uses SSL inspection to decrypt and re-inspect this layer, which is how it can enforce policy on encrypted web traffic.
+      </div>
+    </div>
+
+    <div class="osi-row">
+      <div class="osi-layer-box" style="background:#fffbf0; color:#8a6a00; border:2px solid #d4a000;">Layer 5<br/>Session</div>
+      <div class="osi-detail">
+        <strong>Managing the start, middle, and end of a conversation.</strong>
+        Layer 5 keeps track of which response goes with which request, and keeps multiple streams of data from getting mixed up. In practice, Layers 5, 6, and 7 are often bundled together in modern protocols. Session hijacking attacks (stealing an authenticated session cookie to impersonate a logged-in user) target this layer. Wazuh authentication logs will show session creation and destruction events.
+      </div>
+    </div>
+
+    <div class="osi-row">
+      <div class="osi-layer-box" style="background:#fff3e0; color:#b34000; border:2px solid #b34000;">Layer 4<br/>Transport</div>
+      <div class="osi-detail">
+        <strong>Port numbers. Reliability. TCP vs UDP.</strong>
+        Layer 4 adds port numbers to packets so the receiving host knows which application to hand the data to. Port 22 goes to SSH, port 80 to HTTP, port 443 to HTTPS. TCP (the protocol covered in Chapter 03) is the most common Layer 4 protocol. It guarantees delivery by using the three-way handshake and sequence numbers. UDP sends packets without any guarantee. SYN flood attacks (sending millions of half-open TCP connections to overwhelm a server) are Layer 4 attacks. Port scanning is Layer 4 reconnaissance. The <strong>Sophos IPS</strong> engine and <strong>Wazuh network rules</strong> operate primarily at Layers 3 and 4.
+      </div>
+    </div>
+
+    <div class="osi-row">
+      <div class="osi-layer-box" style="background:#e8f4ff; color:#1a3a6a; border:2px solid #1a5fa1;">Layer 3<br/>Network</div>
+      <div class="osi-detail">
+        <strong>IP addresses. Routing. Getting packets across the internet.</strong>
+        Layer 3 adds source and destination IP addresses to each packet. Routers (including your Sophos firewall acting as a router) operate at Layer 3. They look at the destination IP address of each packet and decide which path to send it down. IP spoofing (forging the source IP address in a packet) is a Layer 3 attack. The <strong>Sophos firewall policy engine</strong> is primarily a Layer 3/4 tool: it allows or denies traffic based on source IP, destination IP, and port.
+      </div>
+    </div>
+
+    <div class="osi-row">
+      <div class="osi-layer-box" style="background:#e8f5e9; color:#1a5a1a; border:2px solid #2a7a2a;">Layer 2<br/>Data Link</div>
+      <div class="osi-detail">
+        <strong>MAC addresses. Local network delivery. ARP.</strong>
+        Layer 3 routes packets across the internet using IP addresses. But once a packet arrives on your local network, it needs a different address to find the right device on that specific segment. That is the MAC address (also called hardware address or Ethernet address). Every network card has a unique MAC address burned in at the factory. ARP (Address Resolution Protocol) is the Layer 2 mechanism that maps an IP address to a MAC address. ARP spoofing is a Layer 2 attack: the attacker sends forged ARP replies to redirect traffic to their machine. <strong>Sophos firewall cannot block ARP spoofing</strong> because it operates at Layer 3 and never sees Layer 2 frames. <strong>Wireshark</strong> can see it because it captures at Layer 2.
+      </div>
+    </div>
+
+    <div class="osi-row">
+      <div class="osi-layer-box" style="background:#f5f5f5; color:#444; border:2px solid #888;">Layer 1<br/>Physical</div>
+      <div class="osi-detail">
+        <strong>The wire. The radio signal. The electrons.</strong>
+        Layer 1 is the actual physical medium carrying the signal: copper cable, fibre optic, Wi-Fi radio waves. Security at this layer means physical access controls (locked server rooms, cable management). This is out of scope for this course. All tools and attacks covered here operate at Layers 2 through 7.
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="section">
+    <h2>Encapsulation: How Layers Wrap Each Other</h2>
+    <p><strong>Encapsulation</strong> is the process of wrapping data with the header information needed by each layer. When you send an HTTP request, here is what actually happens step by step on your computer before the packet hits the wire:</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">Encapsulation: A Web Request Being Wrapped Layer by Layer</div>
+      <svg viewBox="0 0 820 280" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <!-- Step labels on left -->
+        <text x="2" y="40"  font-size="8.5" font-weight="700" fill="#d63b3b">Layer 7</text>
+        <text x="2" y="90"  font-size="8.5" font-weight="700" fill="#b34000">Layer 4</text>
+        <text x="2" y="140" font-size="8.5" font-weight="700" fill="#1a5fa1">Layer 3</text>
+        <text x="2" y="190" font-size="8.5" font-weight="700" fill="#2a7a2a">Layer 2</text>
+        <text x="2" y="240" font-size="8.5" font-weight="700" fill="#555">Wire</text>
+
+        <!-- L7: Just the data -->
+        <rect x="52" y="22" width="760" height="30" rx="4" fill="#fce4ec" stroke="#d63b3b" stroke-width="1.5"/>
+        <text x="432" y="42" text-anchor="middle" font-size="9" fill="#b71c1c">GET /login HTTP/1.1   Host: bank.example.com   (HTTP Application Data)</text>
+
+        <!-- L4: TCP header added -->
+        <rect x="52" y="72" width="100" height="30" rx="4" fill="#fff3e0" stroke="#b34000" stroke-width="1.5"/>
+        <text x="102" y="86" text-anchor="middle" font-size="8" font-weight="700" fill="#b34000">TCP Header</text>
+        <text x="102" y="97" text-anchor="middle" font-size="7" fill="#b34000">SrcPort: 52341</text>
+        <rect x="152" y="72" width="660" height="30" rx="0" fill="#fce4ec" stroke="#b34000" stroke-width="1.5" stroke-dasharray="4"/>
+        <text x="482" y="92" text-anchor="middle" font-size="8.5" fill="#888">HTTP data (unchanged)</text>
+        <text x="102" y="110" font-size="7" fill="#888">TCP wraps the HTTP data by prepending a 20-byte TCP header containing source port, destination port, and sequence number</text>
+
+        <!-- L3: IP header added -->
+        <rect x="52" y="122" width="80" height="30" rx="4" fill="#e8f4ff" stroke="#1a5fa1" stroke-width="1.5"/>
+        <text x="92" y="136" text-anchor="middle" font-size="8" font-weight="700" fill="#1a5fa1">IP Header</text>
+        <text x="92" y="147" text-anchor="middle" font-size="7" fill="#1a5fa1">Src: 10.0.2.5</text>
+        <rect x="132" y="122" width="100" height="30" rx="0" fill="#fff3e0" stroke="#1a5fa1" stroke-width="1.5" stroke-dasharray="4"/>
+        <text x="182" y="142" text-anchor="middle" font-size="7.5" fill="#888">TCP Hdr</text>
+        <rect x="232" y="122" width="580" height="30" rx="0" fill="#fce4ec" stroke="#1a5fa1" stroke-width="1.5" stroke-dasharray="4"/>
+        <text x="522" y="142" text-anchor="middle" font-size="8.5" fill="#888">HTTP data</text>
+        <text x="92" y="160" font-size="7" fill="#888">IP wraps the TCP segment by prepending an IP header containing source IP, destination IP, and TTL</text>
+
+        <!-- L2: Ethernet header added -->
+        <rect x="52" y="172" width="65" height="30" rx="4" fill="#e8f5e9" stroke="#2a7a2a" stroke-width="1.5"/>
+        <text x="84" y="186" text-anchor="middle" font-size="8" font-weight="700" fill="#2a7a2a">Eth Hdr</text>
+        <text x="84" y="197" text-anchor="middle" font-size="7" fill="#2a7a2a">MAC addr</text>
+        <rect x="117" y="172" width="80" height="30" rx="0" fill="#e8f4ff" stroke="#2a7a2a" stroke-width="1" stroke-dasharray="3"/>
+        <text x="157" y="192" text-anchor="middle" font-size="7.5" fill="#888">IP Hdr</text>
+        <rect x="197" y="172" width="100" height="30" rx="0" fill="#fff3e0" stroke="#2a7a2a" stroke-width="1" stroke-dasharray="3"/>
+        <text x="247" y="192" text-anchor="middle" font-size="7.5" fill="#888">TCP Hdr</text>
+        <rect x="297" y="172" width="505" height="30" rx="0" fill="#fce4ec" stroke="#2a7a2a" stroke-width="1" stroke-dasharray="3"/>
+        <text x="549" y="192" text-anchor="middle" font-size="8.5" fill="#888">HTTP data</text>
+        <rect x="802" y="172" width="10" height="30" rx="0" fill="#e8f5e9" stroke="#2a7a2a" stroke-width="1.5"/>
+        <text x="807" y="192" text-anchor="middle" font-size="6.5" font-weight="700" fill="#2a7a2a">FCS</text>
+
+        <!-- Wire: bits -->
+        <rect x="52" y="222" width="760" height="30" rx="4" fill="#f5f5f5" stroke="#888" stroke-width="1.5"/>
+        <text x="432" y="242" text-anchor="middle" font-family="Consolas, monospace" font-size="8" fill="#666">01001000 01010100 01010100 01010000 ...  (1500 bytes sent as electrical signal or radio)</text>
+
+        <!-- Down arrow -->
+        <line x1="825" y1="37" x2="825" y2="250" stroke="#ccc" stroke-width="1.5" stroke-dasharray="4"/>
+        <polygon points="820,248 825,258 830,248" fill="#ccc"/>
+        <text x="838" y="150" font-size="8" fill="#888" transform="rotate(90,838,150)">Sender wraps downward</text>
+
+      </svg>
+      <div class="diagram-caption">Each layer adds its own header around the data from the layer above. This is encapsulation. At the receiving end, each layer removes its header and passes the remaining data upward. Wireshark shows you all of these headers at once, which is why it can dissect every layer of a packet.</div>
+    </div>
+
+    <p>When the destination host receives the packet, the process runs in reverse. The network card strips the Ethernet header (Layer 2), hands the remaining data up. The operating system strips the IP header (Layer 3), hands it up. The TCP stack strips the TCP header (Layer 4), hands it up. The web server application receives the original HTTP request (Layer 7). This reverse process is called <strong>decapsulation</strong>.</p>
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="section">
+    <h2>Where Your Tools Sit in the Stack</h2>
+    <p>Every tool in this course captures data at a specific layer. A tool cannot see data at layers below the one it operates at. This is the single most important thing to understand about your defensive tool stack.</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">Tool Positions in the OSI Stack</div>
+      <svg viewBox="0 0 820 200" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <!-- Layer column -->
+        <rect x="5"   y="10" width="50" height="25" rx="3" fill="#fce4ec" stroke="#d63b3b" stroke-width="1"/>
+        <text x="30"  y="26" text-anchor="middle" font-size="8.5" font-weight="700" fill="#b71c1c">L7 App</text>
+        <rect x="5"   y="37" width="50" height="25" rx="3" fill="#fff5f0" stroke="#e8520a" stroke-width="1"/>
+        <text x="30"  y="53" text-anchor="middle" font-size="8.5" font-weight="700" fill="#a33a00">L6 Pres</text>
+        <rect x="5"   y="64" width="50" height="25" rx="3" fill="#fffbf0" stroke="#d4a000" stroke-width="1"/>
+        <text x="30"  y="80" text-anchor="middle" font-size="8.5" font-weight="700" fill="#8a6a00">L5 Sess</text>
+        <rect x="5"   y="91" width="50" height="25" rx="3" fill="#fff3e0" stroke="#b34000" stroke-width="1"/>
+        <text x="30"  y="107" text-anchor="middle" font-size="8.5" font-weight="700" fill="#b34000">L4 Trans</text>
+        <rect x="5"   y="118" width="50" height="25" rx="3" fill="#e8f4ff" stroke="#1a5fa1" stroke-width="1"/>
+        <text x="30"  y="134" text-anchor="middle" font-size="8.5" font-weight="700" fill="#1a5fa1">L3 Net</text>
+        <rect x="5"   y="145" width="50" height="25" rx="3" fill="#e8f5e9" stroke="#2a7a2a" stroke-width="1"/>
+        <text x="30"  y="161" text-anchor="middle" font-size="8.5" font-weight="700" fill="#2a7a2a">L2 Data</text>
+        <rect x="5"   y="172" width="50" height="25" rx="3" fill="#f5f5f5" stroke="#888" stroke-width="1"/>
+        <text x="30"  y="188" text-anchor="middle" font-size="8.5" font-weight="700" fill="#555">L1 Phys</text>
+
+        <!-- Wireshark: captures L2-L7 -->
+        <rect x="70" y="10" width="120" height="160" rx="5" fill="#3a7fc122" stroke="#3a7fc1" stroke-width="2"/>
+        <text x="130" y="30" text-anchor="middle" font-size="9" font-weight="700" fill="#3a7fc1">Wireshark</text>
+        <text x="130" y="44" text-anchor="middle" font-size="7.5" fill="#3a7fc1">Captures L2 - L7</text>
+        <text x="130" y="80" text-anchor="middle" font-size="7" fill="#555">Sees everything:</text>
+        <text x="130" y="92" text-anchor="middle" font-size="7" fill="#555">MAC, IP, port,</text>
+        <text x="130" y="104" text-anchor="middle" font-size="7" fill="#555">TCP flags, HTTP</text>
+        <text x="130" y="116" text-anchor="middle" font-size="7" fill="#555">content, ARP,</text>
+        <text x="130" y="128" text-anchor="middle" font-size="7" fill="#555">DNS, TLS hello</text>
+
+        <!-- SafeLine WAF: L7 only -->
+        <rect x="205" y="10" width="140" height="25" rx="5" fill="#d63b3b22" stroke="#d63b3b" stroke-width="2"/>
+        <text x="275" y="26" text-anchor="middle" font-size="9" font-weight="700" fill="#d63b3b">SafeLine WAF</text>
+        <rect x="205" y="14" width="140" height="16" rx="3" fill="#d63b3b11"/>
+        <text x="275" y="50" text-anchor="middle" font-size="7" fill="#888">Sees only Layer 7:</text>
+        <text x="275" y="62" text-anchor="middle" font-size="7" fill="#888">HTTP/HTTPS content</text>
+        <text x="275" y="74" text-anchor="middle" font-size="7" fill="#888">after TLS decryption.</text>
+        <text x="275" y="86" text-anchor="middle" font-size="7" fill="#d63b3b">Blocks SQLi, XSS,</text>
+        <text x="275" y="98" text-anchor="middle" font-size="7" fill="#d63b3b">path traversal etc.</text>
+
+        <!-- Sophos: L3-L7 with SSL inspection -->
+        <rect x="360" y="10" width="150" height="133" rx="5" fill="#CC550022" stroke="#CC5500" stroke-width="2"/>
+        <text x="435" y="27" text-anchor="middle" font-size="9" font-weight="700" fill="#CC5500">Sophos Firewall</text>
+        <text x="435" y="42" text-anchor="middle" font-size="7.5" fill="#CC5500">L3 - L7 (with SSL inspection)</text>
+        <text x="435" y="65" text-anchor="middle" font-size="7" fill="#555">Firewall policy: L3/L4</text>
+        <text x="435" y="77" text-anchor="middle" font-size="7" fill="#555">(IP/port allow/deny)</text>
+        <text x="435" y="92" text-anchor="middle" font-size="7" fill="#555">IPS engine: L4/L7</text>
+        <text x="435" y="104" text-anchor="middle" font-size="7" fill="#555">(signature matching)</text>
+        <text x="435" y="119" text-anchor="middle" font-size="7" fill="#CC5500">Cannot see L2 ARP</text>
+        <text x="435" y="131" text-anchor="middle" font-size="7" fill="#CC5500">spoofing attacks</text>
+
+        <!-- Wazuh: L4-L7 via logs -->
+        <rect x="525" y="10" width="155" height="133" rx="5" fill="#8B330022" stroke="#8B3300" stroke-width="2"/>
+        <text x="602" y="27" text-anchor="middle" font-size="9" font-weight="700" fill="#8B3300">Wazuh</text>
+        <text x="602" y="42" text-anchor="middle" font-size="7.5" fill="#8B3300">L4 - L7 (via agent logs)</text>
+        <text x="602" y="62" text-anchor="middle" font-size="7" fill="#555">Does not capture packets</text>
+        <text x="602" y="74" text-anchor="middle" font-size="7" fill="#555">directly. Ingests logs</text>
+        <text x="602" y="86" text-anchor="middle" font-size="7" fill="#555">from other systems:</text>
+        <text x="602" y="100" text-anchor="middle" font-size="7" fill="#555">Sophos syslog, SafeLine</text>
+        <text x="602" y="112" text-anchor="middle" font-size="7" fill="#555">events, OS auth logs,</text>
+        <text x="602" y="124" text-anchor="middle" font-size="7" fill="#555">file integrity events</text>
+
+        <!-- Grafana: meta layer -->
+        <rect x="695" y="10" width="120" height="133" rx="5" fill="#7b29b622" stroke="#7b29b6" stroke-width="2"/>
+        <text x="755" y="27" text-anchor="middle" font-size="9" font-weight="700" fill="#7b29b6">Grafana</text>
+        <text x="755" y="42" text-anchor="middle" font-size="7.5" fill="#7b29b6">Visualisation layer</text>
+        <text x="755" y="62" text-anchor="middle" font-size="7" fill="#555">Does not sit at any</text>
+        <text x="755" y="74" text-anchor="middle" font-size="7" fill="#555">specific OSI layer.</text>
+        <text x="755" y="88" text-anchor="middle" font-size="7" fill="#555">Queries Wazuh data</text>
+        <text x="755" y="100" text-anchor="middle" font-size="7" fill="#555">from all layers and</text>
+        <text x="755" y="112" text-anchor="middle" font-size="7" fill="#555">presents aggregated</text>
+        <text x="755" y="124" text-anchor="middle" font-size="7" fill="#555">metrics and alerts</text>
+
+      </svg>
+      <div class="diagram-caption">Each tool covers a different section of the OSI stack. Wireshark is the most complete because it captures raw frames. SafeLine sees only Layer 7. Sophos covers Layers 3-7 but cannot see below Layer 3. Wazuh sees Layers 4-7 but only through logs, not raw packets. Grafana is a presentation tool that visualises data from all other tools.</div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="section">
+    <h2>Why the OSI Layer an Attack Targets Matters</h2>
+    <p>Here is a worked example that illustrates why OSI layer knowledge is critical for a security analyst.</p>
+
+    <p><strong>Scenario:</strong> You receive a Wazuh alert saying a victim host's traffic is being intercepted. The suspected attack is ARP spoofing.</p>
+
+    <table class="field-table">
+      <thead><tr><th>Question</th><th>Answer Using OSI Layer Knowledge</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>What layer is ARP spoofing?</td>
+          <td>Layer 2 (Data Link). ARP is a Layer 2 protocol that maps IP addresses to MAC addresses.</td>
+        </tr>
+        <tr>
+          <td>Can Sophos firewall block it?</td>
+          <td>No. Sophos operates at Layer 3 and above. It never processes Layer 2 frames. ARP packets are invisible to it.</td>
+        </tr>
+        <tr>
+          <td>Can Wireshark see it?</td>
+          <td>Yes. Wireshark captures at Layer 2, which includes all ARP traffic. It will also flag duplicate ARP replies as a warning.</td>
+        </tr>
+        <tr>
+          <td>What evidence will Wazuh have?</td>
+          <td>Wazuh can detect ARP spoofing via Suricata or via an agent-based ARP monitoring rule. It will produce an alert with the conflicting MAC addresses. But it learns about this via a log from another tool, not by seeing the raw ARP packet itself.</td>
+        </tr>
+        <tr>
+          <td>What evidence will SafeLine have?</td>
+          <td>None about the ARP spoofing itself. SafeLine is Layer 7. If the attacker then injects content into the victim's HTTP traffic, SafeLine might see unusual HTTP requests, but it cannot see the Layer 2 mechanism that made the attack possible.</td>
+        </tr>
+        <tr>
+          <td>How do you stop it?</td>
+          <td>Dynamic ARP Inspection (DAI) on the network switch. This is a Layer 2 control on the switch itself. None of the tools covered in this course implement DAI (it is a switch feature), but Wazuh can alert on it happening.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-ir">
+      <div class="callout-title">The Analyst Diagnostic Pattern</div>
+      When you receive an alert about an attack, always ask: "What OSI layer is this attack operating at?" Then ask: "Which of my tools operates at that layer?" That tells you immediately which tool has the evidence and which tools are blind to this particular threat. This framework appears in every chapter of this course.
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="section">
+    <h2>Quick Reference: Attack Layer Mapping</h2>
+    <p>Use this table when investigating an alert to understand what evidence each tool will have.</p>
+
+    <table class="field-table">
+      <thead>
+        <tr>
+          <th>Attack</th>
+          <th>OSI Layer</th>
+          <th>Sophos sees it?</th>
+          <th>SafeLine sees it?</th>
+          <th>Wazuh sees it?</th>
+          <th>Wireshark sees it?</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>ARP spoofing</td><td>Layer 2</td><td style="color:#d63b3b;">No</td><td style="color:#d63b3b;">No</td><td style="color:#d4a000;">Via Suricata/agent only</td><td style="color:#2a7a2a;">Yes - full ARP frames</td></tr>
+        <tr><td>Port scan (SYN)</td><td>Layer 4</td><td style="color:#2a7a2a;">Yes - IPS alert</td><td style="color:#d63b3b;">No</td><td style="color:#2a7a2a;">Yes - firewall log</td><td style="color:#2a7a2a;">Yes - SYN pattern</td></tr>
+        <tr><td>SSH brute force</td><td>Layer 4/7</td><td style="color:#2a7a2a;">Yes - IPS alert</td><td style="color:#d63b3b;">No (not HTTP)</td><td style="color:#2a7a2a;">Yes - auth failure log</td><td style="color:#2a7a2a;">Yes - TCP stream</td></tr>
+        <tr><td>HTTP credential theft</td><td>Layer 7</td><td style="color:#d4a000;">Yes if SSL inspection on</td><td style="color:#2a7a2a;">Yes - access log</td><td style="color:#2a7a2a;">Yes - web log decoder</td><td style="color:#2a7a2a;">Yes - plaintext in stream</td></tr>
+        <tr><td>SQL injection</td><td>Layer 7</td><td style="color:#d4a000;">IPS may catch signatures</td><td style="color:#2a7a2a;">Yes - primary defence</td><td style="color:#2a7a2a;">Yes - SafeLine alert ingested</td><td style="color:#d4a000;">Only if HTTP, not HTTPS</td></tr>
+        <tr><td>HTTPS stripping</td><td>Layer 6/7</td><td style="color:#2a7a2a;">Yes - SSL log anomaly</td><td style="color:#d4a000;">Sees the plain HTTP</td><td style="color:#2a7a2a;">Yes - via Sophos log</td><td style="color:#2a7a2a;">Yes - HTTP on port 443</td></tr>
+        <tr><td>Directory brute force</td><td>Layer 7</td><td style="color:#d4a000;">IPS signatures</td><td style="color:#2a7a2a;">Yes - rate limit + 404s</td><td style="color:#2a7a2a;">Yes - SafeLine event ingested</td><td style="color:#2a7a2a;">Yes - mass 404 pattern</td></tr>
+        <tr><td>SYN flood DDoS</td><td>Layer 4</td><td style="color:#2a7a2a;">Yes - IPS + firewall</td><td style="color:#d63b3b;">Not directly</td><td style="color:#2a7a2a;">Yes - connection spike alert</td><td style="color:#2a7a2a;">Yes - massive SYN count</td></tr>
+        <tr><td>Data exfiltration</td><td>Layer 4/7</td><td style="color:#2a7a2a;">Yes - AppControl log</td><td style="color:#d63b3b;">No (not web attack)</td><td style="color:#2a7a2a;">Yes - large transfer alert</td><td style="color:#2a7a2a;">Yes - byte volume</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="takeaways">
+    <h2>Key Takeaways</h2>
+    <ul>
+      <li>A packet is a small chunk of data with addressing headers attached. All network data is broken into packets and reassembled at the destination.</li>
+      <li>The OSI model has 7 layers. Each layer has one job. Layer 1 is the physical wire. Layer 7 is the application. Layers go from hardware at the bottom to software at the top.</li>
+      <li>Encapsulation wraps data from higher layers with headers from lower layers. Decapsulation strips those headers at the receiving end. Wireshark shows you every layer simultaneously.</li>
+      <li>The layer an attack targets determines which tool can see it. ARP spoofing is Layer 2 - Sophos cannot see it. SQL injection is Layer 7 - SafeLine is the primary defence. Port scanning is Layer 4 - Sophos IPS and Wazuh both see it.</li>
+      <li>Wireshark is the only tool in this course that captures at Layer 2, making it the most complete source of evidence but also the most demanding to interpret.</li>
+      <li>When you receive any alert in this course, always identify the OSI layer first. That one step tells you which tools have evidence, which are blind, and what to look for.</li>
+    </ul>
+  </div>
+
+</main>
+
+<nav class="chapter-nav" style="margin-top:0;">
+  <a class="nav-home" href="index.html">Home</a>
+  <span style="color:#888; font-size:0.85rem;">Start of course</span>
+  <span class="chapter-nav-spacer"></span>
+  <a href="02-following-the-flow.html">Next: Following the Flow &rarr;</a>
+</nav>
+</body>
+</html>

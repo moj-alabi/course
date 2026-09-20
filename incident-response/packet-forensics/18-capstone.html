@@ -1,0 +1,945 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 18 - Capstone: Traffic Flood Investigation | Shef Labs</title>
+  <link rel="stylesheet" href="../../style.css" />
+  <style>
+    .osi-badge { display:inline-block; padding:2px 9px; border-radius:12px; font-size:0.72rem; font-weight:700; margin-right:6px; vertical-align:middle; }
+    .osi-l2 { background:#e8f5e9; color:#1a5a1a; border:1px solid #2a7a2a; }
+    .osi-l3 { background:#e3f2fd; color:#1a3a6a; border:1px solid #1a5fa1; }
+    .osi-l4 { background:#fff3e0; color:#8a3000; border:1px solid #b34000; }
+    .osi-l7 { background:#fce4ec; color:#8a0000; border:1px solid #d63b3b; }
+
+    .phase-box {
+      border-left: 4px solid #CC5500;
+      background: #fff8f4;
+      padding: 1rem 1.25rem;
+      margin: 1.5rem 0;
+      border-radius: 0 6px 6px 0;
+    }
+    .phase-box h3 { margin: 0 0 0.5rem 0; color: #CC5500; font-size: 1rem; }
+
+    .step-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      background: #CC5500;
+      color: #fff;
+      border-radius: 50%;
+      font-size: 0.8rem;
+      font-weight: 700;
+      margin-right: 0.5rem;
+      flex-shrink: 0;
+    }
+    .step-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.5rem;
+      margin: 0.75rem 0;
+    }
+    .step-content { flex: 1; }
+
+    .tool-row {
+      display: grid;
+      grid-template-columns: 140px 1fr 1fr 1fr;
+      gap: 0;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      overflow: hidden;
+      margin: 1rem 0;
+      font-size: 0.82rem;
+    }
+    .tool-row-header {
+      display: grid;
+      grid-template-columns: 140px 1fr 1fr 1fr;
+      background: #2d2d2d;
+      color: #fff;
+      font-weight: 700;
+      font-size: 0.78rem;
+    }
+    .tool-row-header div, .tool-row div { padding: 0.6rem 0.75rem; border-right: 1px solid #e0e0e0; }
+    .tool-row-header div { border-right-color: #444; }
+    .tool-row div:last-child, .tool-row-header div:last-child { border-right: none; }
+    .tool-row:nth-child(even) { background: #fafafa; }
+
+    .detect-yes { color: #1a7a1a; font-weight: 700; }
+    .detect-no  { color: #888; }
+    .detect-na  { color: #aaa; font-style: italic; }
+
+    .report-field {
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      padding: 0.75rem 1rem;
+      margin: 0.5rem 0;
+      background: #fafafa;
+    }
+    .report-field-label {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #CC5500;
+      margin-bottom: 0.3rem;
+    }
+    .report-field-content {
+      font-size: 0.85rem;
+      color: #555;
+      font-style: italic;
+    }
+    .report-field-filled {
+      font-size: 0.85rem;
+      color: #1a1a1a;
+    }
+
+    .rubric-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.6rem 0;
+      border-bottom: 1px solid #eee;
+      font-size: 0.85rem;
+    }
+    .rubric-pts {
+      background: #CC5500;
+      color: #fff;
+      font-weight: 700;
+      font-size: 0.78rem;
+      padding: 2px 10px;
+      border-radius: 12px;
+      white-space: nowrap;
+    }
+
+    .timeline-row {
+      display: flex;
+      gap: 0;
+      margin: 0.3rem 0;
+      font-size: 0.82rem;
+      align-items: stretch;
+    }
+    .timeline-time {
+      width: 110px;
+      flex-shrink: 0;
+      background: #2d2d2d;
+      color: #CC5500;
+      font-family: Consolas, monospace;
+      font-size: 0.78rem;
+      padding: 0.4rem 0.6rem;
+      border-radius: 4px 0 0 4px;
+    }
+    .timeline-event {
+      flex: 1;
+      padding: 0.4rem 0.75rem;
+      background: #f5f5f5;
+      border-radius: 0 4px 4px 0;
+      color: #333;
+    }
+    .timeline-tool {
+      width: 90px;
+      flex-shrink: 0;
+      background: #e8e8e8;
+      padding: 0.4rem 0.5rem;
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: #555;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+<header class="site-header">
+  <a class="logo" href="../../index.html">
+    <div class="logo-mark"><img src="../../SLCA.png" alt="SLCA" style="width:100%;height:100%;object-fit:contain;" /></div>
+    <div><div class="logo-text">Shef<span>Labs</span></div><div class="header-subtitle">Cyber Academy</div></div>
+  </a>
+  <div style="font-size:0.85rem; color:#888;">Incident Response 101</div>
+</header>
+<nav class="chapter-nav">
+  <a class="nav-home" href="index.html">Home</a>
+  <a href="17-ir-triage-to-ticket.html">&larr; Chapter 17</a>
+  <span class="chapter-nav-spacer"></span>
+  <span class="chapter-label">Chapter 18 of 18</span>
+  <span style="color:#888; font-size:0.85rem;">Final Chapter</span>
+</nav>
+<main class="page-wrapper">
+
+  <div class="chapter-header">
+    <div class="chapter-number">Chapter 18 - Capstone</div>
+    <h1>Reconstruct the Attack</h1>
+    <div class="chapter-tagline">Run a real 2-minute randomized flood attack against sl-ubuntu-srv01 and sl-ubuntu-srv02 using the SLCA Traffic Flood Toolkit. Detect every attack type using your full tool stack. Write a professional incident report. Nobody tells you what fired - you find it yourself.</div>
+  </div>
+
+  <div class="callout callout-ir">
+    <div class="callout-title">This is a Live Exercise, Not a Reading Task</div>
+    You will run real attack traffic against real targets in your lab. The toolkit randomizes which attack types it uses, so every student gets a different combination. Your job is to detect whatever actually happened using Grafana, Graylog, Wazuh, Wireshark, and SafeLine - then write a report proving what you found. There is no answer key. The logs are the answer.
+  </div>
+
+  <div class="objectives-box">
+    <h3>What You Are Demonstrating</h3>
+    <ul>
+      <li>Setting up a complete pre-flight monitoring state before an attack occurs</li>
+      <li>Using Grafana as the first-response detection layer during a live attack</li>
+      <li>Querying Graylog (Sophos + SafeLine + Wazuh logs) to identify attack types and timestamps</li>
+      <li>Writing Wireshark display filters to confirm each attack at the packet level</li>
+      <li>Cross-correlating evidence across five tools to build a complete picture</li>
+      <li>Identifying what each tool can and cannot see for each attack type</li>
+      <li>Writing a professional incident report from raw evidence with no guidance</li>
+    </ul>
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="section">
+    <h2>The Traffic Flood Toolkit</h2>
+    <p>The SLCA Traffic Flood Toolkit is a controlled lab tool from the Shef Labs Cyber Academy GitHub repository. It is designed to generate realistic flood attack traffic against lab targets. In randomized mode it draws from a pool of attack types and runs them in sequence or in parallel for the specified duration. You do not know in advance which attacks will be selected.</p>
+
+    <h3>Attack Pool</h3>
+    <p>The toolkit draws from the following attack types. Your job is to determine which of these occurred in your run:</p>
+
+    <table class="field-table">
+      <thead><tr><th>Attack Type</th><th>Protocol / Layer</th><th>What it generates</th><th>Primary tool to detect it</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>SYN Flood</td><td><span class="osi-badge osi-l4">Layer 4</span>TCP</td>
+          <td>Mass TCP SYN packets to a single port without completing the handshake. Exhausts the server connection table.</td>
+          <td>Sophos IPS (via Graylog) + Grafana connection count spike</td>
+        </tr>
+        <tr>
+          <td>UDP Flood</td><td><span class="osi-badge osi-l4">Layer 4</span>UDP</td>
+          <td>Mass UDP packets to random ports. Forces ICMP Port Unreachable responses, saturating CPU and bandwidth.</td>
+          <td>Sophos IPS (via Graylog) + Grafana network ingress spike</td>
+        </tr>
+        <tr>
+          <td>ICMP Flood</td><td><span class="osi-badge osi-l3">Layer 3</span>ICMP</td>
+          <td>Mass ICMP Echo Request packets (ping flood). Saturates bandwidth and forces the host to generate Echo Reply traffic.</td>
+          <td>Sophos IPS (via Graylog) + Wireshark + Grafana</td>
+        </tr>
+        <tr>
+          <td>HTTP Flood</td><td><span class="osi-badge osi-l7">Layer 7</span>HTTP</td>
+          <td>Mass HTTP GET or POST requests to the web server. Exhausts web worker threads and back-end database connections.</td>
+          <td>SafeLine WAF (via Graylog) + Grafana CPU spike on web server VM</td>
+        </tr>
+        <tr>
+          <td>TCP Port Scan</td><td><span class="osi-badge osi-l4">Layer 4</span>TCP</td>
+          <td>SYN scan across all ports on the target. Identifies open services as a recon step before other attacks.</td>
+          <td>Sophos IPS (via Graylog) + Wireshark SYN pattern</td>
+        </tr>
+        <tr>
+          <td>Connection Exhaustion</td><td><span class="osi-badge osi-l4">Layer 4</span>TCP</td>
+          <td>Opens thousands of legitimate TCP connections and holds them open without sending data. Exhausts the file descriptor limit on the server.</td>
+          <td>Grafana (open connection count) + Wazuh (system resource alert)</td>
+        </tr>
+        <tr>
+          <td>DNS Query Flood</td><td><span class="osi-badge osi-l4">Layer 4</span>UDP/53</td>
+          <td>Mass DNS queries to the target's DNS resolver or to an external resolver via the target network. Exhausts resolver capacity.</td>
+          <td>Sophos IPS (via Graylog) + Wireshark UDP/53 volume</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="section">
+    <h2>Part 1 - Pre-Flight Checklist</h2>
+    <p>You must have all monitoring tools active and recording before you start the attack. If you start the toolkit and then open your tools, you will miss the first 30-60 seconds of data.</p>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Do This Before You Run the Toolkit</div>
+      Every item below must be confirmed as active before you proceed. Mark each one off before moving to Part 2.
+    </div>
+
+    <div class="phase-box">
+      <h3>Choose your target</h3>
+      <div class="step-row"><span class="step-num">1</span><div class="step-content">Decide which server you are targeting: <strong>sl-ubuntu-srv01</strong> or <strong>sl-ubuntu-srv02</strong>. You only need one. Write down its hostname and IP address - you will use it in every step below.</div></div>
+    </div>
+
+    <div class="phase-box">
+      <h3>Grafana</h3>
+      <div class="step-row"><span class="step-num">2</span><div class="step-content">Open your Grafana dashboard and navigate to the panel covering your chosen target. Confirm it is showing live metrics: CPU%, network bytes in/out, active connections, memory.</div></div>
+      <div class="step-row"><span class="step-num">3</span><div class="step-content">Set the time range to "Last 5 minutes" with auto-refresh every 5 seconds. This gives you a live view during the attack.</div></div>
+      <div class="step-row"><span class="step-num">4</span><div class="step-content">Note the baseline values right now: typical CPU%, typical network bytes/sec, typical active connections. Write these down. You need them to identify spikes during the attack.</div></div>
+    </div>
+
+    <div class="phase-box">
+      <h3>Graylog</h3>
+      <div class="step-row"><span class="step-num">5</span><div class="step-content">Open Graylog and prepare a search covering the last 30 minutes with no filter applied yet. You will refine the search after the attack using the exact start timestamp.</div></div>
+      <div class="step-row"><span class="step-num">6</span><div class="step-content">Confirm that Sophos log messages are arriving. Run: <code>log_type:IPS</code> and check the last entry is recent (within 5 minutes).</div></div>
+      <div class="step-row"><span class="step-num">7</span><div class="step-content">Confirm SafeLine WAF events are arriving. Run: <code>source:safeline</code> and check the last entry is recent.</div></div>
+    </div>
+
+    <div class="phase-box">
+      <h3>Wazuh</h3>
+      <div class="step-row"><span class="step-num">8</span><div class="step-content">Open Wazuh and confirm your chosen target shows as "Active". If it shows "Disconnected", resolve this before continuing.</div></div>
+      <div class="step-row"><span class="step-num">9</span><div class="step-content">Go to the Alerts view and confirm alerts are flowing in real time from the agent on your chosen target.</div></div>
+    </div>
+
+    <div class="phase-box">
+      <h3>Record your start time</h3>
+      <div class="step-row"><span class="step-num">10</span><div class="step-content">Write down the exact time in UTC before you run the toolkit. This is your <strong>T=0</strong>. Every log query you run afterwards will use this as the start of your search window. Format: YYYY-MM-DDTHH:MM:SSZ</div></div>
+    </div>
+
+    <div class="phase-box">
+      <h3>Kali - Start the Wireshark Capture (Mandatory Submission Artefact)</h3>
+      <div class="step-row"><span class="step-num">11</span><div class="step-content">Launch Wireshark on Kali <strong>before</strong> you run the toolkit. This captures the attacker-side view of all traffic you send to the target.</div></div>
+
+      <div class="log-label">Kali Pre-Flight - Start Wireshark capture</div>
+      <div class="log-block"><span class="log-comment"># Step 1: Open Wireshark</span>
+<span class="log-comment"># Applications > Sniffing and Spoofing > Wireshark</span>
+<span class="log-comment"># or type in a terminal: wireshark &amp;</span>
+
+<span class="log-comment"># Step 2: Set the capture filter (top bar, before you start)</span>
+<span class="log-comment"># Type exactly: host &lt;your-chosen-target-ip&gt;</span>
+<span class="log-comment"># e.g.: host 10.0.1.11</span>
+<span class="log-comment"># This limits the capture to traffic to/from your target only</span>
+
+<span class="log-comment"># Step 3: Select the outbound interface</span>
+<span class="log-comment"># Double-click your outbound interface in the interface list (usually eth0)</span>
+<span class="log-comment"># Wireshark starts capturing immediately</span>
+
+<span class="log-comment"># Step 4: Verify packets are flowing</span>
+<span class="log-comment"># The packet counter at the bottom right should be incrementing</span>
+<span class="log-comment"># If it stays at 0, you have the wrong interface or the wrong capture filter</span>
+
+<span class="log-comment"># Leave Wireshark running and open a SEPARATE terminal for the toolkit</span>
+<span class="log-comment"># Do NOT stop the capture until the toolkit finishes</span></div>
+
+      <div class="step-row"><span class="step-num">12</span><div class="step-content">With Wireshark running and capturing, open a terminal on Kali for running the toolkit. Keep both windows visible if possible - Wireshark on one side, toolkit terminal on the other.</div></div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="section">
+    <h2>Part 2 - Running the Attack</h2>
+    <p>With all monitoring active, you are ready to run the toolkit. Follow these steps exactly.</p>
+
+    <div class="log-label">Step 1 - Clone the repository (if not already done)</div>
+    <div class="log-block">git clone https://github.com/SLCA/traffic-flood-toolkit.git
+cd traffic-flood-toolkit</div>
+
+    <div class="log-label">Step 2 - Configure your chosen target and duration</div>
+    <div class="log-block"><span class="log-comment"># Replace &lt;your-chosen-target&gt; with sl-ubuntu-srv01 OR sl-ubuntu-srv02 (pick one):</span>
+python3 flood.py \
+  --targets <span class="log-hl">&lt;your-chosen-target&gt;</span> \
+  --duration 120 \
+  --mode randomized \
+  --seed auto           <span class="log-comment"># auto seed = different attack combination every run</span>
+
+<span class="log-comment"># Example:</span>
+python3 flood.py --targets sl-ubuntu-srv01 --duration 120 --mode randomized --seed auto</div>
+
+    <div class="log-label">Step 3 - What the terminal output looks like while running</div>
+    <div class="log-block"><span class="log-comment"># The toolkit will print each attack as it starts:</span>
+[<span class="log-val">00:00</span>] Seed: <span class="log-hl">7f3a9c</span>                    <span class="log-comment"># record this seed - used for support queries only</span>
+[<span class="log-val">00:00</span>] Target: sl-ubuntu-srv01
+[<span class="log-val">00:00</span>] Duration: 120 seconds
+[<span class="log-val">00:00</span>] Mode: randomized
+[<span class="log-val">00:00</span>] Starting attack sequence...
+[<span class="log-val">00:02</span>] <span class="log-hl">[ATTACK RUNNING]</span>                  <span class="log-comment"># attack names are redacted in output by design</span>
+[<span class="log-val">00:18</span>] <span class="log-hl">[ATTACK RUNNING]</span>                  <span class="log-comment"># you do not know which attacks are active</span>
+[<span class="log-val">00:45</span>] <span class="log-hl">[ATTACK RUNNING]</span>
+[<span class="log-val">01:10</span>] <span class="log-hl">[ATTACK RUNNING]</span>
+[<span class="log-val">02:00</span>] Attack sequence complete.
+[<span class="log-val">02:00</span>] Total duration: 120 seconds. Exiting.</div>
+
+    <div class="callout callout-info">
+      <div class="callout-title">What to Do During the 2 Minutes</div>
+      Watch Grafana. Do not try to read logs in real time - they arrive too fast to process during an active attack. Your job during the 120 seconds is: watch which Grafana panels spike, note the approximate time of each spike, and note which target host was affected. Write this down on paper. You will use your notes to guide the log investigation afterwards.
+    </div>
+
+    <h3>After the Toolkit Finishes - Stop and Save the Capture</h3>
+    <p>When the toolkit prints "Attack sequence complete.", switch back to your Wireshark window and save the capture file.</p>
+
+    <div class="log-label">Kali - Stop Wireshark and save the submission file</div>
+    <div class="log-block"><span class="log-comment"># Step 1: Stop the capture</span>
+<span class="log-comment"># Click the red square (Stop Capture) button in the Wireshark toolbar</span>
+<span class="log-comment"># Or press Ctrl+E</span>
+<span class="log-comment"># The packet list stops updating. Your capture is now frozen and safe.</span>
+
+<span class="log-comment"># Step 2: Save the file</span>
+<span class="log-comment"># File > Save As</span>
+<span class="log-comment"># Navigate to your Desktop</span>
+<span class="log-comment"># Set the filename using the submission naming convention:</span>
+<span class="log-comment">#   INC-2026-XXXX_YYYYMMDD_capstone-kali.pcap</span>
+<span class="log-comment">#   e.g. INC-2026-0042_20260920_capstone-kali.pcap</span>
+<span class="log-comment"># File format: Wireshark/tcpdump/... - pcap (NOT pcapng)</span>
+<span class="log-comment"># Click Save</span>
+
+<span class="log-comment"># Step 3: Verify the file was saved</span>
+<span class="log-comment"># The title bar of Wireshark will now show your filename</span>
+<span class="log-comment"># Check the file size: a 120-second flood run should be at least 1 MB</span>
+<span class="log-comment"># If it is under 100 KB, the capture filter was wrong or the wrong interface was used</span>
+
+<span class="log-comment"># Step 4: The file is now open in Wireshark - start your analysis immediately</span>
+<span class="log-comment"># Apply the display filters from Part 3 Step 5 to identify the attack types</span></div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Do Not Close Wireshark Before Saving</div>
+      The PCAP is a mandatory submission item. Save it before closing Wireshark. A file under 1 MB for a 120-second flood run means the capture filter was wrong or the wrong interface was selected. If this happens, re-run the exercise.
+    </div>
+
+    <h3>What to Watch on Grafana During the Attack</h3>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">Grafana Panel Spikes - Which Attack Causes Which Metric to Spike</div>
+      <svg viewBox="0 0 820 280" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <rect x="5" y="5" width="810" height="265" rx="6" fill="#1a1a1a" stroke="#333"/>
+
+        <!-- Header row -->
+        <rect x="10" y="10" width="800" height="22" rx="3" fill="#2d2d2d"/>
+        <text x="90" y="25" text-anchor="middle" font-size="8.5" font-weight="700" fill="#888">Attack Type</text>
+        <text x="230" y="25" text-anchor="middle" font-size="8.5" font-weight="700" fill="#888">Network Bytes In</text>
+        <text x="360" y="25" text-anchor="middle" font-size="8.5" font-weight="700" fill="#888">CPU %</text>
+        <text x="490" y="25" text-anchor="middle" font-size="8.5" font-weight="700" fill="#888">Active Connections</text>
+        <text x="640" y="25" text-anchor="middle" font-size="8.5" font-weight="700" fill="#888">ICMP Errors</text>
+        <text x="760" y="25" text-anchor="middle" font-size="8.5" font-weight="700" fill="#888">HTTP Rate</text>
+
+        <!-- SYN Flood row -->
+        <rect x="10" y="35" width="800" height="28" rx="0" fill="#1e1e1e"/>
+        <text x="90" y="53" text-anchor="middle" font-size="8" fill="#f48771">SYN Flood</text>
+        <text x="230" y="53" text-anchor="middle" font-size="8" fill="#4ec9b0">SPIKE (syn pkt volume)</text>
+        <text x="360" y="53" text-anchor="middle" font-size="8" fill="#4ec9b0">SPIKE (TCP state mgmt)</text>
+        <text x="490" y="53" text-anchor="middle" font-size="8" fill="#f48771">SPIKE (half-open)</text>
+        <text x="640" y="53" text-anchor="middle" font-size="8" fill="#888">flat</text>
+        <text x="760" y="53" text-anchor="middle" font-size="8" fill="#888">flat</text>
+
+        <!-- UDP Flood row -->
+        <rect x="10" y="66" width="800" height="28" rx="0" fill="#252525"/>
+        <text x="90" y="84" text-anchor="middle" font-size="8" fill="#f48771">UDP Flood</text>
+        <text x="230" y="84" text-anchor="middle" font-size="8" fill="#f48771">SPIKE (huge)</text>
+        <text x="360" y="84" text-anchor="middle" font-size="8" fill="#4ec9b0">SPIKE (ICMP responses)</text>
+        <text x="490" y="84" text-anchor="middle" font-size="8" fill="#888">flat (no connections)</text>
+        <text x="640" y="84" text-anchor="middle" font-size="8" fill="#f48771">SPIKE (port unreachable)</text>
+        <text x="760" y="84" text-anchor="middle" font-size="8" fill="#888">flat</text>
+
+        <!-- ICMP Flood row -->
+        <rect x="10" y="97" width="800" height="28" rx="0" fill="#1e1e1e"/>
+        <text x="90" y="115" text-anchor="middle" font-size="8" fill="#f48771">ICMP Flood</text>
+        <text x="230" y="115" text-anchor="middle" font-size="8" fill="#f48771">SPIKE (ping traffic)</text>
+        <text x="360" y="115" text-anchor="middle" font-size="8" fill="#4ec9b0">SPIKE (echo replies)</text>
+        <text x="490" y="115" text-anchor="middle" font-size="8" fill="#888">flat</text>
+        <text x="640" y="115" text-anchor="middle" font-size="8" fill="#f48771">SPIKE (echo reply rate)</text>
+        <text x="760" y="115" text-anchor="middle" font-size="8" fill="#888">flat</text>
+
+        <!-- HTTP Flood row -->
+        <rect x="10" y="128" width="800" height="28" rx="0" fill="#252525"/>
+        <text x="90" y="146" text-anchor="middle" font-size="8" fill="#f48771">HTTP Flood</text>
+        <text x="230" y="146" text-anchor="middle" font-size="8" fill="#4ec9b0">SPIKE (HTTP traffic)</text>
+        <text x="360" y="146" text-anchor="middle" font-size="8" fill="#f48771">SPIKE (heavy, web workers)</text>
+        <text x="490" y="146" text-anchor="middle" font-size="8" fill="#4ec9b0">SPIKE (HTTP connections)</text>
+        <text x="640" y="146" text-anchor="middle" font-size="8" fill="#888">flat</text>
+        <text x="760" y="146" text-anchor="middle" font-size="8" fill="#f48771">SPIKE (requests/sec)</text>
+
+        <!-- Port Scan row -->
+        <rect x="10" y="159" width="800" height="28" rx="0" fill="#1e1e1e"/>
+        <text x="90" y="177" text-anchor="middle" font-size="8" fill="#9cdcfe">TCP Port Scan</text>
+        <text x="230" y="177" text-anchor="middle" font-size="8" fill="#9cdcfe">mild bump (SYN packets)</text>
+        <text x="360" y="177" text-anchor="middle" font-size="8" fill="#888">flat or mild</text>
+        <text x="490" y="177" text-anchor="middle" font-size="8" fill="#9cdcfe">brief spike</text>
+        <text x="640" y="177" text-anchor="middle" font-size="8" fill="#888">flat</text>
+        <text x="760" y="177" text-anchor="middle" font-size="8" fill="#888">flat</text>
+
+        <!-- Connection Exhaustion row -->
+        <rect x="10" y="190" width="800" height="28" rx="0" fill="#252525"/>
+        <text x="90" y="208" text-anchor="middle" font-size="8" fill="#f48771">Conn Exhaust</text>
+        <text x="230" y="208" text-anchor="middle" font-size="8" fill="#888">low (no data sent)</text>
+        <text x="360" y="208" text-anchor="middle" font-size="8" fill="#4ec9b0">SPIKE (fd management)</text>
+        <text x="490" y="208" text-anchor="middle" font-size="8" fill="#f48771">SPIKE (massive, sustained)</text>
+        <text x="640" y="208" text-anchor="middle" font-size="8" fill="#888">flat</text>
+        <text x="760" y="208" text-anchor="middle" font-size="8" fill="#888">flat</text>
+
+        <!-- DNS Query Flood row -->
+        <rect x="10" y="221" width="800" height="28" rx="0" fill="#1e1e1e"/>
+        <text x="90" y="239" text-anchor="middle" font-size="8" fill="#f48771">DNS Flood</text>
+        <text x="230" y="239" text-anchor="middle" font-size="8" fill="#4ec9b0">SPIKE (UDP/53 volume)</text>
+        <text x="360" y="239" text-anchor="middle" font-size="8" fill="#9cdcfe">mild-moderate</text>
+        <text x="490" y="239" text-anchor="middle" font-size="8" fill="#888">flat (stateless)</text>
+        <text x="640" y="239" text-anchor="middle" font-size="8" fill="#888">flat</text>
+        <text x="760" y="239" text-anchor="middle" font-size="8" fill="#888">flat</text>
+
+        <!-- Legend -->
+        <rect x="10" y="254" width="800" height="11" rx="0" fill="#1a1a1a"/>
+        <rect x="15" y="256" width="8" height="8" fill="#f48771"/>
+        <text x="28" y="263" font-size="7" fill="#ccc">Strong spike</text>
+        <rect x="110" y="256" width="8" height="8" fill="#4ec9b0"/>
+        <text x="123" y="263" font-size="7" fill="#ccc">Moderate spike</text>
+        <rect x="215" y="256" width="8" height="8" fill="#9cdcfe"/>
+        <text x="228" y="263" font-size="7" fill="#ccc">Mild / brief</text>
+        <rect x="305" y="256" width="8" height="8" fill="#555"/>
+        <text x="318" y="263" font-size="7" fill="#ccc">Flat (no impact on this metric)</text>
+        <text x="560" y="263" font-size="7" fill="#888">Read this table left to right - match what you saw to the attack type</text>
+      </svg>
+      <div class="diagram-caption">During the 2-minute attack window, use this table to match what you see on Grafana to the attack type. A combination of spikes across panels narrows down which attacks are running. Write down which panels spiked, when, and on which host.</div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="section">
+    <h2>Part 3 - Post-Attack Detection</h2>
+    <p>The attack has finished. Now work through each tool systematically. Use your T=0 timestamp and T+120 as your search window. Do not skip a tool just because you think you already found the answer - you need corroboration from at least two sources for each attack type in your report.</p>
+
+    <h3>Step 1: Grafana - Establish the Timeline</h3>
+    <p>Change the Grafana time range to cover T=0 to T=5 minutes. This shows the attack window plus a recovery period after the attack stops. Look for:</p>
+    <ul>
+      <li>Which panels spiked and when exactly (use the panel cursor to get precise timestamps)</li>
+      <li>Which host was affected more (srv01 vs srv02 may show different patterns if the toolkit targeted them with different attacks)</li>
+      <li>When did metrics return to baseline (the recovery time tells you the attack ended)</li>
+    </ul>
+    <p><strong>Write down:</strong> the timestamp and metric name for every spike you see. This becomes your attack timeline in the incident report.</p>
+
+    <h3>Step 2: Graylog - Sophos IPS Log Queries</h3>
+    <p>Run each of these queries in order. Each one targets a specific attack type. Replace T0 and T120 with your actual timestamps.</p>
+
+    <div class="log-label">Graylog Query - All Sophos IPS events in the attack window</div>
+    <div class="log-block">log_type:IPS AND timestamp:[<span class="log-hl">T0</span> TO <span class="log-hl">T120</span>]
+
+<span class="log-comment"># Results: list of every IPS signature that fired</span>
+<span class="log-comment"># Key field to read: signature_msg - tells you the attack type</span>
+<span class="log-comment"># Also read: src_ip, dst_ip, dst_port, action (Drop/Alert)</span></div>
+
+    <div class="log-label">Graylog Query - SYN Flood specifically</div>
+    <div class="log-block">log_type:IPS AND signature_msg:"SYN Flood" AND timestamp:[<span class="log-hl">T0</span> TO <span class="log-hl">T120</span>]
+
+<span class="log-comment"># Expected Sophos IPS log format if SYN Flood was in your run:</span>
+date=2026-09-20 time=11:28:04
+log_type=<span class="log-hl">IPS</span>
+signature_id=<span class="log-val">28200001</span>
+signature_msg=<span class="log-hl">TCP SYN Flood</span>
+src_ip=<span class="log-val">10.0.3.50</span>               <span class="log-comment"># the attack source - your Kali/toolkit machine</span>
+dst_ip=<span class="log-hl">10.0.1.11</span>               <span class="log-comment"># sl-ubuntu-srv01 or sl-ubuntu-srv02</span>
+dst_port=<span class="log-val">80</span>
+protocol=<span class="log-val">TCP</span>
+packets_per_second=<span class="log-hl">24300</span>
+action=<span class="log-hl">Drop</span></div>
+
+    <div class="log-label">Graylog Query - UDP Flood specifically</div>
+    <div class="log-block">log_type:IPS AND signature_msg:"UDP Flood" AND timestamp:[<span class="log-hl">T0</span> TO <span class="log-hl">T120</span>]</div>
+
+    <div class="log-label">Graylog Query - ICMP Flood specifically</div>
+    <div class="log-block">log_type:IPS AND (signature_msg:"ICMP Flood" OR signature_msg:"Ping Flood") AND timestamp:[<span class="log-hl">T0</span> TO <span class="log-hl">T120</span>]</div>
+
+    <div class="log-label">Graylog Query - Port Scan specifically</div>
+    <div class="log-block">log_type:IPS AND (signature_msg:"Port Scan" OR signature_msg:"TCP Scan") AND timestamp:[<span class="log-hl">T0</span> TO <span class="log-hl">T120</span>]</div>
+
+    <div class="log-label">Graylog Query - DNS Query Flood</div>
+    <div class="log-block">log_type:IPS AND signature_msg:"DNS Flood" AND timestamp:[<span class="log-hl">T0</span> TO <span class="log-hl">T120</span>]
+
+<span class="log-comment"># Alternatively check for high-volume UDP/53 from the attack source:</span>
+protocol:UDP AND dst_port:53 AND src_ip:<span class="log-hl">10.0.3.50</span> AND timestamp:[<span class="log-hl">T0</span> TO <span class="log-hl">T120</span>]</div>
+
+    <h3>Step 3: Graylog - SafeLine WAF Queries (HTTP Flood only)</h3>
+    <p>SafeLine only sees HTTP/HTTPS traffic. If your run included an HTTP flood, this is where the evidence lives. For all other attack types, SafeLine will show nothing - that is not a gap in your investigation, it is correct expected behaviour. Note it in your report.</p>
+
+    <div class="log-label">Graylog Query - SafeLine events in the attack window</div>
+    <div class="log-block">source:safeline AND timestamp:[<span class="log-hl">T0</span> TO <span class="log-hl">T120</span>]
+
+<span class="log-comment"># If HTTP flood was active, you will see entries like:</span>
+{
+  "timestamp": "<span class="log-hl">2026-09-20T11:28:12Z</span>",
+  "src_ip": "<span class="log-hl">10.0.3.50</span>",
+  "method": "<span class="log-val">GET</span>",
+  "url": "<span class="log-val">/</span>",
+  "attack_type": "<span class="log-hl">http_flood</span>",
+  "action": "<span class="log-val">rate_limit</span>",
+  "requests_per_second": <span class="log-num">847</span>,
+  "status_code": <span class="log-num">429</span>
+}
+<span class="log-comment"># 847 requests per second from one IP = clear HTTP flood signature</span></div>
+
+    <h3>Step 4: Wazuh - Alert Review</h3>
+    <p>Wazuh agents on both servers collect host-level evidence. These alerts fire from the server's own logs and kernel messages, not from the network. This means Wazuh sees the impact of the attack even when Sophos drops the traffic before it reaches the host.</p>
+
+    <div class="log-label">Wazuh - Key rule IDs to look for in your attack window</div>
+    <div class="log-block"><span class="log-comment"># In Wazuh Alerts, filter by time range T0 to T120</span>
+<span class="log-comment"># and filter by agent.name: sl-ubuntu-srv01 OR sl-ubuntu-srv02</span>
+
+<span class="log-comment"># Rule IDs that fire for flood attacks:</span>
+rule.id: <span class="log-hl">100200</span>   <span class="log-comment"># High inbound network traffic rate (from node metrics)</span>
+rule.id: <span class="log-hl">100201</span>   <span class="log-comment"># TCP connection table near exhaustion</span>
+rule.id: <span class="log-hl">100202</span>   <span class="log-comment"># Kernel: possible SYN flooding on port</span>
+rule.id: <span class="log-hl">100210</span>   <span class="log-comment"># High CPU utilization sustained</span>
+rule.id: <span class="log-hl">100215</span>   <span class="log-comment"># ICMP error rate spike</span>
+rule.id: <span class="log-hl">31151</span>    <span class="log-comment"># Web server: high request rate (Apache/Nginx log)</span>
+
+<span class="log-comment"># Full Wazuh alert JSON structure for a SYN flood host-level detection:</span>
+{
+  "timestamp": "<span class="log-hl">2026-09-20T11:28:08Z</span>",
+  "agent": { "name": "<span class="log-hl">sl-ubuntu-srv01</span>", "ip": "<span class="log-val">10.0.1.11</span>" },
+  "rule": {
+    "id": "<span class="log-hl">100202</span>",
+    "description": "<span class="log-hl">Kernel: possible SYN flooding on port 80</span>",
+    "level": <span class="log-num">10</span>,
+    "groups": ["dos", "network"]
+  },
+  "data": {
+    "log_source": "<span class="log-val">/var/log/kern.log</span>",
+    "message": "<span class="log-val">TCP: Possible SYN flooding on port 80. Sending cookies.</span>"
+  }
+}</div>
+
+    <h3>Step 5: Wireshark - Packet-Level Confirmation</h3>
+    <p>Use Wireshark to confirm each attack at the packet level. The PCAP you started before the attack contains the full evidence. Apply each filter below and check whether that traffic pattern is present.</p>
+
+    <table class="field-table">
+      <thead><tr><th>Attack Type</th><th>Wireshark Display Filter</th><th>What you expect to see if active</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>SYN Flood</td>
+          <td><code>tcp.flags.syn==1 and tcp.flags.ack==0 and ip.dst==&lt;srv-ip&gt;</code></td>
+          <td>Mass SYN packets, no SYN/ACK responses completing the handshake, thousands per second</td>
+        </tr>
+        <tr>
+          <td>UDP Flood</td>
+          <td><code>udp and ip.dst==&lt;srv-ip&gt;</code></td>
+          <td>Mass UDP to random high ports, followed by ICMP Port Unreachable responses from the server</td>
+        </tr>
+        <tr>
+          <td>ICMP Flood</td>
+          <td><code>icmp and ip.dst==&lt;srv-ip&gt;</code></td>
+          <td>Mass Echo Request packets. Server replies with Echo Reply to each one. IO Graph shows a vertical spike.</td>
+        </tr>
+        <tr>
+          <td>HTTP Flood</td>
+          <td><code>http.request and ip.dst==&lt;srv-ip&gt;</code></td>
+          <td>Mass HTTP GET requests from the attack source, all identical or slightly varied URLs, no meaningful user agent</td>
+        </tr>
+        <tr>
+          <td>TCP Port Scan</td>
+          <td><code>tcp.flags.syn==1 and tcp.flags.ack==0 and ip.src==&lt;attacker-ip&gt;</code></td>
+          <td>Sequential SYN packets to ascending port numbers. Open ports: SYN/ACK back. Closed ports: RST back.</td>
+        </tr>
+        <tr>
+          <td>Connection Exhaustion</td>
+          <td><code>tcp.flags.syn==1 and ip.src==&lt;attacker-ip&gt;</code> then check Statistics > Conversations</td>
+          <td>Many full handshakes completing but no data flowing. Hundreds of established connections with no payload.</td>
+        </tr>
+        <tr>
+          <td>DNS Flood</td>
+          <td><code>dns and ip.src==&lt;attacker-ip&gt;</code></td>
+          <td>Mass DNS query packets, all from attacker source, many different or repeated query names</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-info">
+      <div class="callout-title">What if a Filter Returns No Results?</div>
+      That means this attack type was not in your randomized run. This is a valid finding. Write it in your report as "not observed - no evidence in Wireshark capture, Sophos IPS, or Wazuh". Negative evidence is still evidence.
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="section">
+    <h2>Part 4 - Coverage Verification</h2>
+    <p>Before writing your report, run through this cross-tool check to make sure you have not missed anything. Every spike on Grafana should have a corresponding Graylog entry and a Wireshark pattern. If they do not match, investigate the gap.</p>
+
+    <table class="field-table">
+      <thead><tr><th>If you see this...</th><th>But NOT this...</th><th>Investigate this possibility</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Grafana CPU spike on srv01</td>
+          <td>No matching Sophos IPS log in Graylog</td>
+          <td>Attack traffic may have originated from inside the network (LAN-side of Sophos, not WAN). Check Wazuh agent logs directly. Check Wireshark for internal source IPs.</td>
+        </tr>
+        <tr>
+          <td>Grafana network ingress spike</td>
+          <td>No Wireshark traffic matching the spike</td>
+          <td>Wireshark may have been capturing the wrong interface. Check whether the interface you captured is the one receiving the flood traffic. Try filtering by the toolkit source IP.</td>
+        </tr>
+        <tr>
+          <td>Sophos IPS alert in Graylog</td>
+          <td>No corresponding Grafana spike</td>
+          <td>Sophos may have dropped the traffic before it hit the server. This is correct and expected behaviour. The attack was stopped at the perimeter - the server never saw it, so no metric spike. Note this as "blocked by Sophos before impact" in your report.</td>
+        </tr>
+        <tr>
+          <td>Wazuh kernel log alert</td>
+          <td>No Sophos IPS event</td>
+          <td>Traffic may have bypassed the perimeter (internal source) and hit the host directly. Sophos only inspects traffic crossing its interfaces.</td>
+        </tr>
+        <tr>
+          <td>SafeLine WAF events</td>
+          <td>No Sophos IPS event for the same attack</td>
+          <td>HTTP flood is a Layer 7 attack. Sophos IPS may not have fired a signature because the HTTP requests were individually valid. SafeLine's rate-based detection at Layer 7 catches what IPS signature matching misses.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="section">
+    <h2>Part 5 - The Incident Report</h2>
+    <p>Write your report using this template. Every field marked in orange is mandatory. Fill it based on what you found in your investigation. The worked example on the next section shows a completed report for a sample 3-attack run.</p>
+
+    <div class="report-field">
+      <div class="report-field-label">Incident ID</div>
+      <div class="report-field-content">INC-[YYYY]-[number] - e.g. INC-2026-0042</div>
+    </div>
+    <div class="report-field">
+      <div class="report-field-label">Date and Time (UTC)</div>
+      <div class="report-field-content">T=0 timestamp when you started the toolkit</div>
+    </div>
+    <div class="report-field">
+      <div class="report-field-label">Analyst</div>
+      <div class="report-field-content">Your name</div>
+    </div>
+    <div class="report-field">
+      <div class="report-field-label">Severity</div>
+      <div class="report-field-content">Critical / High / Medium / Low - justify your choice based on the attack types found and whether any succeeded in impacting the hosts</div>
+    </div>
+    <div class="report-field">
+      <div class="report-field-label">Affected Hosts</div>
+      <div class="report-field-content">sl-ubuntu-srv01 (IP), sl-ubuntu-srv02 (IP) - note if only one was impacted</div>
+    </div>
+    <div class="report-field">
+      <div class="report-field-label">Attack Window</div>
+      <div class="report-field-content">T=0 to T+120 seconds (exact timestamps)</div>
+    </div>
+    <div class="report-field">
+      <div class="report-field-label">Attack Types Identified</div>
+      <div class="report-field-content">List each attack type you confirmed, with: (a) the Graylog query used, (b) the Wazuh rule ID, (c) the Wireshark display filter, (d) whether it was blocked by Sophos or reached the host</div>
+    </div>
+
+    <h3>Evidence Detection Table</h3>
+    <p>Fill one row per attack type you identified. Mark each tool's evidence status. This is the core of your report.</p>
+
+    <div class="tool-row-header">
+      <div>Attack Type</div>
+      <div>Grafana</div>
+      <div>Graylog (Sophos/Wazuh)</div>
+      <div>Wireshark</div>
+    </div>
+    <div class="tool-row">
+      <div><em>e.g. SYN Flood</em></div>
+      <div class="detect-yes">Network bytes in spike at T+18s. Active connections +4200.</div>
+      <div class="detect-yes">IPS sig TCP SYN Flood, 3 events, action=Drop. Wazuh rule 100202.</div>
+      <div class="detect-yes">Filter: tcp.flags.syn==1 - 18,400 pkts/sec confirmed.</div>
+    </div>
+    <div class="tool-row">
+      <div><em>e.g. UDP Flood</em></div>
+      <div class="detect-yes">Network bytes in spike at T+45s. ICMP error rate +8900%.</div>
+      <div class="detect-yes">IPS sig UDP Flood, action=Drop. Wazuh rule 100200.</div>
+      <div class="detect-yes">Filter: udp and ip.dst - 11,200 pkts/sec to random ports confirmed.</div>
+    </div>
+    <div class="tool-row">
+      <div><em>e.g. ICMP Flood</em></div>
+      <div class="detect-na">Not observed on either host</div>
+      <div class="detect-na">No Sophos IPS events. No Wazuh rules.</div>
+      <div class="detect-na">Filter returned 0 results. Not in this run.</div>
+    </div>
+
+    <h3>Additional Report Fields</h3>
+
+    <div class="report-field">
+      <div class="report-field-label">SafeLine WAF Status</div>
+      <div class="report-field-content">Did SafeLine log any events? If HTTP flood was not in your run, write: "No SafeLine events observed - expected, as no Layer 7 HTTP flood attack was identified in this run."</div>
+    </div>
+    <div class="report-field">
+      <div class="report-field-label">Containment Actions</div>
+      <div class="report-field-content">For each confirmed attack: what action should be taken now? (e.g. "Block source IP X.X.X.X at Sophos perimeter", "Increase SYN cookie threshold on srv01", "Enable ICMP rate limiting in Sophos DoS policy")</div>
+    </div>
+    <div class="report-field">
+      <div class="report-field-label">Monitoring Gaps Identified</div>
+      <div class="report-field-content">Were there any spikes in Grafana without a matching Graylog entry? Any Wireshark traffic not showing in Graylog? Document these gaps - they are findings about your monitoring coverage, not failures on your part.</div>
+    </div>
+    <div class="report-field">
+      <div class="report-field-label">Recommendations</div>
+      <div class="report-field-content">At least three specific, actionable recommendations based on what you found. These should be tool-specific (e.g. Sophos DoS policy threshold values, Wazuh active response rules to enable, Grafana alert thresholds to configure).</div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="section">
+    <h2>Worked Example: Sample 3-Attack Run</h2>
+    <p>This is what a completed investigation and report looks like for a sample run that produced a SYN flood, a UDP flood, and an HTTP flood. Your run will be different. Use this as a reference for the standard of evidence required.</p>
+
+    <h3>Attack Timeline from Grafana</h3>
+    <div class="timeline-row"><div class="timeline-time">T+00:02</div><div class="timeline-event">Network bytes/in spike begins on sl-ubuntu-srv01. Baseline 2 MB/s rising to 340 MB/s over 8 seconds.</div><div class="timeline-tool">Grafana</div></div>
+    <div class="timeline-row"><div class="timeline-time">T+00:04</div><div class="timeline-event">Active connections count on srv01 begins climbing from 180 to 14,400 within 30 seconds.</div><div class="timeline-tool">Grafana</div></div>
+    <div class="timeline-row"><div class="timeline-time">T+00:08</div><div class="timeline-event">Sophos IPS fires: TCP SYN Flood. Action=Drop. Metric spike levels off as Sophos begins absorbing the traffic.</div><div class="timeline-tool">Graylog</div></div>
+    <div class="timeline-row"><div class="timeline-time">T+00:18</div><div class="timeline-event">Wazuh rule 100202 fires on sl-ubuntu-srv01: kernel log reports SYN cookies activated on port 80.</div><div class="timeline-tool">Wazuh</div></div>
+    <div class="timeline-row"><div class="timeline-time">T+00:45</div><div class="timeline-event">New network bytes spike begins on sl-ubuntu-srv02. ICMP error rate panel spikes 8,900%. UDP flood indicator.</div><div class="timeline-tool">Grafana</div></div>
+    <div class="timeline-row"><div class="timeline-time">T+00:47</div><div class="timeline-event">Sophos IPS fires: UDP Flood. Action=Drop. src_ip=10.0.3.50 dst_ip=10.0.1.12.</div><div class="timeline-tool">Graylog</div></div>
+    <div class="timeline-row"><div class="timeline-time">T+01:10</div><div class="timeline-event">HTTP request rate on srv01 spikes to 847 req/sec. SafeLine WAF begins rate-limiting 10.0.3.50, returning HTTP 429.</div><div class="timeline-tool">Graylog (SafeLine)</div></div>
+    <div class="timeline-row"><div class="timeline-time">T+01:12</div><div class="timeline-event">CPU on srv01 spikes to 94% as web worker threads saturate with HTTP flood requests.</div><div class="timeline-tool">Grafana</div></div>
+    <div class="timeline-row"><div class="timeline-time">T+02:00</div><div class="timeline-event">All metrics begin returning to baseline. Attack sequence complete.</div><div class="timeline-tool">Grafana</div></div>
+    <div class="timeline-row"><div class="timeline-time">T+02:35</div><div class="timeline-event">All metrics fully at baseline. srv01 and srv02 healthy. No persistent impact.</div><div class="timeline-tool">Grafana</div></div>
+
+    <h3>Completed Evidence Detection Table (Sample)</h3>
+    <div class="tool-row-header">
+      <div>Attack Type</div>
+      <div>Grafana Evidence</div>
+      <div>Graylog Evidence</div>
+      <div>Wireshark Evidence</div>
+    </div>
+    <div class="tool-row">
+      <div>SYN Flood</div>
+      <div class="detect-yes">Net bytes spike T+2s. Active connections +14,220.</div>
+      <div class="detect-yes">IPS: TCP SYN Flood, action=Drop. Wazuh 100202 (kern.log SYN cookies).</div>
+      <div class="detect-yes">18,400 SYN pkts/sec to port 80. No handshakes completing.</div>
+    </div>
+    <div class="tool-row">
+      <div>UDP Flood</div>
+      <div class="detect-yes">Net bytes srv02 spike T+45s. ICMP errors +8,900%.</div>
+      <div class="detect-yes">IPS: UDP Flood, action=Drop. Wazuh 100200 (high traffic rate).</div>
+      <div class="detect-yes">11,200 UDP pkts/sec to random ports. ICMP port unreachable replies confirmed.</div>
+    </div>
+    <div class="tool-row">
+      <div>ICMP Flood</div>
+      <div class="detect-na">Not observed.</div>
+      <div class="detect-na">No IPS events. No Wazuh rules.</div>
+      <div class="detect-na">Filter icmp returned background traffic only. Not in this run.</div>
+    </div>
+    <div class="tool-row">
+      <div>HTTP Flood</div>
+      <div class="detect-yes">CPU srv01 spike to 94% at T+72s. HTTP request rate panel 847 req/sec.</div>
+      <div class="detect-yes">SafeLine: http_flood from 10.0.3.50, rate_limit applied, 429 responses. Wazuh 31151.</div>
+      <div class="detect-yes">847 HTTP GET / requests/sec. All identical. No Sophos IPS event (L7 bypass of IPS signature).</div>
+    </div>
+    <div class="tool-row">
+      <div>TCP Port Scan</div>
+      <div class="detect-na">Not observed.</div>
+      <div class="detect-na">No IPS events for port scan.</div>
+      <div class="detect-na">SYN filter shows only the flood traffic, not sequential port scanning. Not in this run.</div>
+    </div>
+    <div class="tool-row">
+      <div>Conn Exhaustion</div>
+      <div class="detect-na">Not observed.</div>
+      <div class="detect-na">No Wazuh rule 100201.</div>
+      <div class="detect-na">Statistics > Conversations: no established connections with zero data. Not in this run.</div>
+    </div>
+    <div class="tool-row">
+      <div>DNS Flood</div>
+      <div class="detect-na">Not observed.</div>
+      <div class="detect-na">No Sophos IPS DNS Flood event. No UDP/53 volume spike in Graylog.</div>
+      <div class="detect-na">DNS filter returned only background queries. Not in this run.</div>
+    </div>
+
+    <div class="log-label">Sample Recommendations Section</div>
+    <div class="log-block"><span class="log-comment"># Recommendation 1 - SYN Flood</span>
+Review and lower the Sophos DoS policy SYN flood threshold from the default.
+The current threshold allowed 18,400 packets/second before IPS fired.
+Recommended threshold: 5,000 packets/second.
+This would reduce the impact window from 8 seconds to under 2 seconds.
+
+<span class="log-comment"># Recommendation 2 - UDP Flood</span>
+Enable GeoIP-based blocking on Sophos for countries with no legitimate business traffic.
+The attack source (10.0.3.50) was on the internal network in this lab exercise,
+but in production, UDP floods predominantly originate from botnet infrastructure
+in high-risk regions. GeoIP filtering reduces attack surface before IPS must act.
+
+<span class="log-comment"># Recommendation 3 - HTTP Flood</span>
+SafeLine WAF rate-limiting threshold is currently 847 req/sec before action.
+Lower the rate-limit threshold to 100 req/sec per source IP.
+At 847 req/sec, srv01 CPU reached 94%. At 100 req/sec, CPU impact would be minimal.
+Also enable SafeLine's bot detection mode to catch automated flood tools earlier.</div>
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="section">
+    <h2>The Two-Vantage-Point Principle</h2>
+    <p>Your submission contains two PCAP files from two different positions in the network. Together they tell the complete forensic story of the attack.</p>
+
+    <table class="field-table">
+      <thead><tr><th>Capture Source</th><th>Vantage Point</th><th>What it proves</th><th>What it cannot show</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Kali (Wireshark, attacker side)</td>
+          <td>The source - traffic as it leaves the attack machine</td>
+          <td>Exactly which attack types were sent, to which targets, at what times. The ground truth of what was attempted.</td>
+          <td>Whether Sophos dropped the traffic. Whether it reached the server. Server-side impact.</td>
+        </tr>
+        <tr>
+          <td>sl-ubuntu-srv01 (Wireshark, defender side)</td>
+          <td>The destination - traffic as it arrives at the target</td>
+          <td>Which attacks broke through Sophos and reached the server. The actual impact on the host.</td>
+          <td>Attack types that Sophos dropped before they hit the server - these will be in the Kali PCAP but not here.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>When a Sophos IPS alert appears in Graylog but there is no matching traffic in the server-side Wireshark capture, this is evidence that Sophos successfully blocked the attack. The Kali-side PCAP confirms the attack was sent. The absence of that traffic in the server-side PCAP confirms Sophos stopped it. Both facts belong in your report.</p>
+
+    <div class="callout callout-info">
+      <div class="callout-title">Why Both PCAPs Are Required</div>
+      Either PCAP alone is incomplete evidence. The Kali PCAP without a server-side capture does not prove the attack reached the target. The server-side capture without the Kali PCAP does not prove who sent the attack or when. Together they form a chain of custody from attacker to target - exactly what a professional forensics report requires.
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Submission Deliverables</h2>
+    <p>Your completed capstone submission consists of exactly these items. All are mandatory.</p>
+
+    <table class="field-table">
+      <thead><tr><th>Item</th><th>Filename Convention</th><th>How to Get It</th><th>Minimum Acceptable</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Incident Report</td>
+          <td>INC-2026-XXXX_report.pdf</td>
+          <td>Written using the Part 5 template. Export as PDF.</td>
+          <td>All mandatory fields completed. Evidence detection table filled for all 7 attack types. At least 3 recommendations.</td>
+        </tr>
+        <tr>
+          <td>Kali PCAP (attacker side)</td>
+          <td>INC-2026-XXXX_YYYYMMDD_capstone-kali.pcap</td>
+          <td>Wireshark capture from Kali. Started (capture filter: host &lt;target-ip&gt;) before the toolkit ran. Saved via File > Save As after "Attack sequence complete."</td>
+          <td>File size at least 1 MB. Must contain traffic with src or dst matching both target IPs. Timestamp must fall within your declared attack window.</td>
+        </tr>
+        <tr>
+          <td>Server-side PCAP</td>
+          <td>INC-2026-XXXX_YYYYMMDD_capstone-server.pcap</td>
+          <td>Wireshark capture from sl-ubuntu-srv01, exported via File > Export Specified Packets (display filtered to attack window only).</td>
+          <td>At least one confirmed attack type visible in the filtered capture. Display filter used must be documented in the report.</td>
+        </tr>
+        <tr>
+          <td>Wireshark Screenshot (one per attack type)</td>
+          <td>INC-2026-XXXX_attack-[type].png</td>
+          <td>Screenshot from your own Kali PCAP opened in Wireshark, with the correct display filter applied, showing the attack traffic.</td>
+          <td>Must be from your own capture. Screenshots copied from course materials will not be accepted. The packet timestamps must match your declared attack window.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>Self-Assessment Rubric</h2>
+    <p>Total: 110 points. Use this to evaluate your own work before submission.</p>
+
+    <div class="rubric-row"><span>Each confirmed attack type - correct identification with named evidence source</span><span class="rubric-pts">5 pts each (up to 35)</span></div>
+    <div class="rubric-row"><span>Each confirmed attack type - Wireshark packet-level confirmation with correct filter used</span><span class="rubric-pts">3 pts each (up to 21)</span></div>
+    <div class="rubric-row"><span>Attack timeline accuracy - timestamps within 30 seconds of actual log entries</span><span class="rubric-pts">10 pts</span></div>
+    <div class="rubric-row"><span>Kali PCAP submitted with correct naming, correct timestamps, attack traffic visible</span><span class="rubric-pts">10 pts</span></div>
+    <div class="rubric-row"><span>At least one Wireshark screenshot from student's own Kali PCAP (not course material)</span><span class="rubric-pts">5 pts</span></div>
+    <div class="rubric-row"><span>Correctly identifying which attacks SafeLine did/did not see and explaining why</span><span class="rubric-pts">5 pts</span></div>
+    <div class="rubric-row"><span>Coverage verification - explaining any gaps between Grafana spikes and log evidence</span><span class="rubric-pts">5 pts</span></div>
+    <div class="rubric-row"><span>Containment actions - one correct, tool-specific action per confirmed attack type</span><span class="rubric-pts">3 pts each (up to 9)</span></div>
+    <div class="rubric-row"><span>Recommendations - three specific, actionable, tool-specific recommendations</span><span class="rubric-pts">5 pts each (10 pts)</span></div>
+
+    <div class="callout callout-ir">
+      <div class="callout-title">On Scoring Zero for an Attack Type</div>
+      If your run did not include a particular attack type and you correctly identify it as "not observed - no evidence in any tool", you receive full credit for that row. Correctly calling a negative is as important as correctly calling a positive. An analyst who invents evidence is more dangerous than one who finds nothing.
+    </div>
+  </div>
+
+  <div class="takeaways">
+    <h2>Course Complete</h2>
+    <ul>
+      <li>You ran a real attack toolkit against real targets and found the evidence without being told what happened. That is the core skill of a Tier-1 analyst.</li>
+      <li>Grafana gives you the fastest signal during a live attack. It tells you something is happening before the logs have been processed. Use it to establish your timeline first.</li>
+      <li>Graylog is your central investigation point. All Sophos IPS, SafeLine WAF, and Wazuh alerts converge there. A time-bounded Graylog query against a known attack window is how you systematically audit what happened.</li>
+      <li>Wireshark provides packet-level proof. Every claim in your incident report should have a corresponding Wireshark filter and packet count backing it up.</li>
+      <li>SafeLine WAF is only relevant for Layer 7 HTTP/HTTPS attacks. For every other attack type in this exercise, its absence from the logs is correct expected behaviour, not a gap.</li>
+      <li>Correctly identifying what did NOT happen is equally important to identifying what did. Negative evidence belongs in the report.</li>
+      <li>An incident report is a chain of evidence. Timestamp, tool, field name, field value - every claim must be traceable to a specific log entry or packet.</li>
+    </ul>
+  </div>
+
+</main>
+<nav class="chapter-nav" style="margin-top:0;">
+  <a class="nav-home" href="index.html">Home</a>
+  <a href="17-ir-triage-to-ticket.html">&larr; Chapter 17</a>
+  <span class="chapter-nav-spacer"></span>
+  <span style="color:#CC5500; font-weight:700;">Course Complete</span>
+</nav>
+</body>
+</html>

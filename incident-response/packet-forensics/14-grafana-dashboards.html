@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 13 - Grafana Dashboards | Shef Labs</title>
+  <link rel="stylesheet" href="../../style.css" />
+</head>
+<body>
+<header class="site-header">
+  <a class="logo" href="../../index.html">
+    <div class="logo-mark"><img src="../../SLCA.png" alt="SLCA" style="width:100%;height:100%;object-fit:contain;" /></div>
+    <div><div class="logo-text">Shef<span>Labs</span></div><div class="header-subtitle">Cyber Academy</div></div>
+  </a>
+  <div style="font-size:0.85rem; color:#888;">Packet Forensics and Network Telemetry</div>
+</header>
+<nav class="chapter-nav">
+  <a class="nav-home" href="index.html">Home</a>
+  <a href="13-sophos-forensics.html">&larr; Chapter 12</a>
+  <span class="chapter-nav-spacer"></span>
+  <span class="chapter-label">Chapter 14 of 18</span>
+  <a href="15-kali-recon.html">Next: Kali Recon Toolkit &rarr;</a>
+</nav>
+<main class="page-wrapper">
+
+  <div class="chapter-header">
+    <div class="chapter-number">Chapter 14</div>
+    <h1>Grafana Dashboards</h1>
+    <div class="chapter-tagline">How Grafana connects to Wazuh OpenSearch, how panels work, and how to build and read the security dashboards you will use throughout this course.</div>
+  </div>
+
+  <div class="objectives-box">
+    <h3>Learning Objectives</h3>
+    <ul>
+      <li>Explain how Grafana connects to Wazuh data via the OpenSearch data source</li>
+      <li>Identify the five dashboard panel types and when to use each one</li>
+      <li>Read a Grafana time-series panel and identify spikes that indicate attacks</li>
+      <li>Understand how Grafana alert rules work and what they generate</li>
+      <li>Describe the standard SOC dashboard layout used in this course environment</li>
+      <li>Build a basic panel query using the Lucene query syntax</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>How Grafana Connects to Wazuh</h2>
+    <p>Grafana is a visualisation platform. It does not store data itself. Instead it connects to <strong>data sources</strong> and queries them on demand. In this course environment, Grafana queries the Wazuh OpenSearch index using the OpenSearch data source plugin.</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">Grafana Data Flow Architecture</div>
+      <svg viewBox="0 0 820 150" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <rect x="10" y="40" width="140" height="70" rx="6" fill="#f5f0fa" stroke="#9b59b6" stroke-width="2"/>
+        <text x="80" y="68" text-anchor="middle" font-size="10" font-weight="700" fill="#7b29b6">Wazuh Manager</text>
+        <text x="80" y="84" text-anchor="middle" font-size="8" fill="#555">Writes alerts to</text>
+        <text x="80" y="98" text-anchor="middle" font-size="8" fill="#555">OpenSearch index</text>
+
+        <line x1="150" y1="75" x2="200" y2="75" stroke="#9b59b6" stroke-width="2" marker-end="url(#gf1)"/>
+
+        <rect x="200" y="25" width="180" height="100" rx="6" fill="#eef5fb" stroke="#3a7fc1" stroke-width="2"/>
+        <text x="290" y="55" text-anchor="middle" font-size="10" font-weight="700" fill="#3a7fc1">OpenSearch</text>
+        <text x="290" y="72" text-anchor="middle" font-size="8" fill="#555">Stores all Wazuh</text>
+        <text x="290" y="86" text-anchor="middle" font-size="8" fill="#555">alert JSON docs</text>
+        <text x="290" y="100" text-anchor="middle" font-size="8" fill="#888">Index: wazuh-alerts-*</text>
+        <text x="290" y="114" text-anchor="middle" font-size="8" fill="#888">REST API on port 9200</text>
+
+        <line x1="380" y1="75" x2="440" y2="75" stroke="#3a7fc1" stroke-width="2" marker-end="url(#gf2)"/>
+        <text x="410" y="67" text-anchor="middle" font-size="7.5" fill="#3a7fc1">REST query</text>
+
+        <rect x="440" y="25" width="180" height="100" rx="6" fill="#fff8f0" stroke="#f0a500" stroke-width="2"/>
+        <text x="530" y="55" text-anchor="middle" font-size="10" font-weight="700" fill="#8a5a00">Grafana</text>
+        <text x="530" y="72" text-anchor="middle" font-size="8" fill="#555">Sends Lucene queries</text>
+        <text x="530" y="86" text-anchor="middle" font-size="8" fill="#555">Receives JSON results</text>
+        <text x="530" y="100" text-anchor="middle" font-size="8" fill="#555">Renders panels</text>
+        <text x="530" y="114" text-anchor="middle" font-size="8" fill="#888">Refresh: 30s / 1m / 5m</text>
+
+        <line x1="620" y1="75" x2="680" y2="75" stroke="#f0a500" stroke-width="2" marker-end="url(#gf3)"/>
+
+        <rect x="680" y="40" width="130" height="70" rx="6" fill="#f5f5f5" stroke="#888" stroke-width="2"/>
+        <text x="745" y="68" text-anchor="middle" font-size="10" font-weight="700" fill="#555">Analyst Browser</text>
+        <text x="745" y="84" text-anchor="middle" font-size="8" fill="#555">Views dashboards</text>
+        <text x="745" y="98" text-anchor="middle" font-size="8" fill="#555">at port 3000</text>
+
+        <defs>
+          <marker id="gf1" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#9b59b6"/></marker>
+          <marker id="gf2" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#3a7fc1"/></marker>
+          <marker id="gf3" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#f0a500"/></marker>
+        </defs>
+      </svg>
+      <div class="diagram-caption">Grafana never stores data. It queries OpenSearch each time a panel loads or refreshes. The OpenSearch index wazuh-alerts-* contains all Wazuh alert JSON documents.</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>The Five Panel Types</h2>
+    <table class="field-table">
+      <thead><tr><th>Panel Type</th><th>Best Used For</th><th>Security Use Case</th></tr></thead>
+      <tbody>
+        <tr><td>Time Series</td><td>Trends and spikes over time</td><td>Alert volume over time, brute force detection, traffic volume anomalies</td></tr>
+        <tr><td>Stat / Single Number</td><td>Key metrics at a glance</td><td>Total alerts today, blocked attacks last hour, active high-severity alerts</td></tr>
+        <tr><td>Bar Chart</td><td>Comparing categories</td><td>Top attacking IPs, most frequent rule IDs, alert counts by agent name</td></tr>
+        <tr><td>Table</td><td>Detailed record lists</td><td>Recent level-10+ alerts with all fields visible for investigation</td></tr>
+        <tr><td>Geomap</td><td>Geographic distribution</td><td>Attack source countries on a world map, traffic heatmaps</td></tr>
+      </tbody>
+    </table>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">Reading a Time Series Panel - Spotting an Attack Spike</div>
+      <svg viewBox="0 0 820 200" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <rect x="10" y="10" width="800" height="180" rx="6" fill="#1e1e2e" stroke="#444" stroke-width="1.5"/>
+        <text x="20" y="30" font-size="9" fill="#888">Alert Count (rule.level >= 7)  Last 6 hours  Refresh: 1m</text>
+
+        <!-- Y axis labels -->
+        <text x="15" y="55" font-size="7" fill="#666">50</text>
+        <text x="15" y="90" font-size="7" fill="#666">30</text>
+        <text x="15" y="125" font-size="7" fill="#666">10</text>
+        <text x="18" y="158" font-size="7" fill="#666">0</text>
+
+        <!-- Grid lines -->
+        <line x1="35" y1="50" x2="800" y2="50" stroke="#333" stroke-width="0.5"/>
+        <line x1="35" y1="85" x2="800" y2="85" stroke="#333" stroke-width="0.5"/>
+        <line x1="35" y1="120" x2="800" y2="120" stroke="#333" stroke-width="0.5"/>
+        <line x1="35" y1="155" x2="800" y2="155" stroke="#333" stroke-width="0.5"/>
+
+        <!-- X axis time labels -->
+        <text x="40" y="170" font-size="7" fill="#666">04:30</text>
+        <text x="160" y="170" font-size="7" fill="#666">05:30</text>
+        <text x="290" y="170" font-size="7" fill="#666">06:30</text>
+        <text x="420" y="170" font-size="7" fill="#666">07:30</text>
+        <text x="550" y="170" font-size="7" fill="#666">08:30</text>
+        <text x="680" y="170" font-size="7" fill="#666">09:30</text>
+
+        <!-- Normal baseline line (low) -->
+        <polyline points="40,148 120,145 160,148 200,146 240,147 280,149 320,147" stroke="#3a7fc1" stroke-width="2" fill="none"/>
+
+        <!-- Spike at ~08:30 - brute force attack -->
+        <polyline points="320,147 360,140 400,110 440,52 480,48 510,65 540,100 570,130 600,143 640,146 680,148 720,147 780,148" stroke="#d63b3b" stroke-width="2.5" fill="none"/>
+
+        <!-- Annotation on spike -->
+        <rect x="430" y="35" width="170" height="26" rx="3" fill="#d63b3b" opacity="0.85"/>
+        <text x="515" y="50" text-anchor="middle" font-size="8" font-weight="700" fill="#fff">Brute force attack 08:22</text>
+        <text x="515" y="60" text-anchor="middle" font-size="7" fill="#ffe">rule 5712 fired 44 times in 6 minutes</text>
+        <line x1="480" y1="52" x2="430" y2="50" stroke="#d63b3b" stroke-width="1.5"/>
+
+        <!-- Legend -->
+        <line x1="600" y1="30" x2="625" y2="30" stroke="#3a7fc1" stroke-width="2"/>
+        <text x="630" y="34" font-size="7.5" fill="#888">Baseline</text>
+        <line x1="680" y1="30" x2="705" y2="30" stroke="#d63b3b" stroke-width="2.5"/>
+        <text x="710" y="34" font-size="7.5" fill="#888">Anomaly</text>
+
+      </svg>
+      <div class="diagram-caption">A sudden spike in the alert count time series at 08:22 indicates a brute force attack. The baseline is around 2-5 alerts per 5-minute bucket. The spike hits 48. Clicking the spike opens the raw alert table.</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Standard SOC Dashboard Layout</h2>
+    <p>This course environment includes a pre-built Grafana SOC dashboard. Understanding the layout before using it makes investigations faster.</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">Course Environment Grafana SOC Dashboard Layout</div>
+      <svg viewBox="0 0 820 320" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <rect x="5" y="5" width="810" height="310" rx="6" fill="#111" stroke="#333" stroke-width="1.5"/>
+
+        <!-- Top row: stat panels -->
+        <rect x="15" y="20" width="140" height="55" rx="4" fill="#1a2a1a" stroke="#3aaa3a" stroke-width="1.5"/>
+        <text x="85" y="44" text-anchor="middle" font-size="9" font-weight="700" fill="#3aaa3a">Alerts Today</text>
+        <text x="85" y="64" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">142</text>
+
+        <rect x="165" y="20" width="140" height="55" rx="4" fill="#2a1a1a" stroke="#d63b3b" stroke-width="1.5"/>
+        <text x="235" y="44" text-anchor="middle" font-size="9" font-weight="700" fill="#d63b3b">Level 10+ Alerts</text>
+        <text x="235" y="64" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">7</text>
+
+        <rect x="315" y="20" width="140" height="55" rx="4" fill="#1a1a2a" stroke="#3a7fc1" stroke-width="1.5"/>
+        <text x="385" y="44" text-anchor="middle" font-size="9" font-weight="700" fill="#3a7fc1">WAF Blocks</text>
+        <text x="385" y="64" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">89</text>
+
+        <rect x="465" y="20" width="140" height="55" rx="4" fill="#2a2a1a" stroke="#f0a500" stroke-width="1.5"/>
+        <text x="535" y="44" text-anchor="middle" font-size="9" font-weight="700" fill="#f0a500">Unique Attack IPs</text>
+        <text x="535" y="64" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">23</text>
+
+        <rect x="615" y="20" width="190" height="55" rx="4" fill="#2a1a2a" stroke="#9b59b6" stroke-width="1.5"/>
+        <text x="710" y="44" text-anchor="middle" font-size="9" font-weight="700" fill="#9b59b6">FIM Alerts</text>
+        <text x="710" y="64" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">3</text>
+
+        <!-- Middle row: time series -->
+        <rect x="15" y="85" width="490" height="100" rx="4" fill="#1a1a1a" stroke="#444" stroke-width="1"/>
+        <text x="25" y="102" font-size="8.5" fill="#888">Alert Volume Over Time (level 7+)</text>
+        <polyline points="25,170 65,168 105,165 145,169 185,140 225,108 265,160 305,167 345,168 380,166 415,168 455,169 495,170" stroke="#CC5500" stroke-width="2" fill="none"/>
+        <rect x="185" y="100" width="80" height="14" rx="2" fill="#CC5500" opacity="0.7"/>
+        <text x="225" y="110" text-anchor="middle" font-size="7" fill="#fff">Spike: brute force</text>
+
+        <rect x="515" y="85" width="290" height="100" rx="4" fill="#1a1a1a" stroke="#444" stroke-width="1"/>
+        <text x="525" y="102" font-size="8.5" fill="#888">Top 5 Attacking IPs (Bar)</text>
+        <rect x="525" y="112" width="120" height="12" rx="2" fill="#d63b3b" opacity="0.8"/>
+        <text x="525" y="135" font-size="7" fill="#888">185.220.101.45 (47)</text>
+        <rect x="525" y="138" width="80" height="12" rx="2" fill="#d63b3b" opacity="0.6"/>
+        <text x="525" y="161" font-size="7" fill="#888">10.0.2.99 (31)</text>
+        <rect x="525" y="163" width="55" height="12" rx="2" fill="#d63b3b" opacity="0.45"/>
+        <text x="525" y="186" font-size="7" fill="#888">91.108.56.142 (18)</text>
+
+        <!-- Bottom row: table -->
+        <rect x="15" y="195" width="790" height="110" rx="4" fill="#1a1a1a" stroke="#444" stroke-width="1"/>
+        <text x="25" y="212" font-size="8.5" fill="#888">Recent High-Severity Alerts (level 10+)  - Click any row to drill down</text>
+        <rect x="15" y="215" width="790" height="14" fill="#222"/>
+        <text x="20" y="225" font-size="7" fill="#666">TIMESTAMP</text>
+        <text x="160" y="225" font-size="7" fill="#666">RULE ID</text>
+        <text x="230" y="225" font-size="7" fill="#666">DESCRIPTION</text>
+        <text x="490" y="225" font-size="7" fill="#666">AGENT</text>
+        <text x="600" y="225" font-size="7" fill="#666">SRC IP</text>
+        <text x="700" y="225" font-size="7" fill="#666">LEVEL</text>
+
+        <rect x="15" y="229" width="790" height="15" fill="#1e1a1a"/>
+        <text x="20" y="240" font-size="7.5" fill="#ce9178">2026-09-20 10:22:14</text>
+        <text x="160" y="240" font-size="7.5" fill="#4ec9b0">5712</text>
+        <text x="230" y="240" font-size="7.5" fill="#fff">SSHD brute force trying to get access</text>
+        <text x="490" y="240" font-size="7.5" fill="#4ec9b0">web-server-01</text>
+        <text x="600" y="240" font-size="7.5" fill="#f48771">10.0.2.99</text>
+        <text x="700" y="240" font-size="7.5" fill="#d63b3b" font-weight="700">10</text>
+
+        <rect x="15" y="244" width="790" height="15" fill="#1a1a1a"/>
+        <text x="20" y="255" font-size="7.5" fill="#ce9178">2026-09-20 10:31:05</text>
+        <text x="160" y="255" font-size="7.5" fill="#4ec9b0">31100</text>
+        <text x="230" y="255" font-size="7.5" fill="#fff">SQL injection attempt blocked by WAF</text>
+        <text x="490" y="255" font-size="7.5" fill="#4ec9b0">safeline-proxy</text>
+        <text x="600" y="255" font-size="7.5" fill="#f48771">185.220.101.45</text>
+        <text x="700" y="255" font-size="7.5" fill="#d63b3b" font-weight="700">10</text>
+
+      </svg>
+      <div class="diagram-caption">The SOC dashboard top row gives immediate situational awareness. The time series shows attack trends. The table at the bottom lists actionable high-severity alerts.</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Grafana Alert Rules</h2>
+    <p>Grafana can evaluate panel queries on a schedule and fire alerts when conditions are met, sending notifications to email, Slack, PagerDuty, or webhook endpoints. This is how you receive out-of-hours notifications for critical events without watching the dashboard.</p>
+
+    <table class="field-table">
+      <thead><tr><th>Alert Rule Field</th><th>Example Value</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td>Condition</td><td>IS ABOVE 5</td><td>Threshold that triggers the alert. "Count of level-10 alerts IS ABOVE 5 in 5 minutes"</td></tr>
+        <tr><td>Evaluate every</td><td>1m</td><td>How often Grafana checks the condition. More frequent = faster detection but more load</td></tr>
+        <tr><td>For</td><td>2m</td><td>How long the condition must be true before the alert fires. Reduces false positives from transient spikes</td></tr>
+        <tr><td>State</td><td>Firing / Pending / Normal</td><td>Current alert state. Firing = condition met. Pending = within "For" window. Normal = resolved.</td></tr>
+        <tr><td>Contact point</td><td>slack-soc-channel</td><td>Where to send the notification. Configure in Grafana Alerting settings.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Building a Basic Panel Query</h3>
+    <p>Panel queries use the Lucene query language (same as OpenSearch). Here are the most useful queries for security panels.</p>
+    <div class="log-block"><span class="log-comment"># Count of high-severity alerts over time</span>
+<span class="log-key">Query</span>: <span class="log-val">rule.level:[10 TO 15]</span>
+<span class="log-key">Metric</span>: <span class="log-val">Count</span>
+<span class="log-key">Group by</span>: <span class="log-val">Date Histogram - @timestamp - 5 minutes</span>
+
+<span class="log-comment"># Top attacking IPs - bar chart</span>
+<span class="log-key">Query</span>: <span class="log-val">rule.level:[7 TO 15]</span>
+<span class="log-key">Metric</span>: <span class="log-val">Count</span>
+<span class="log-key">Group by</span>: <span class="log-val">Terms - data.srcip - Top 10</span>
+
+<span class="log-comment"># Recent critical alerts - table</span>
+<span class="log-key">Query</span>: <span class="log-val">rule.level:[10 TO 15]</span>
+<span class="log-key">Metric</span>: <span class="log-val">Raw documents</span>
+<span class="log-key">Columns</span>: <span class="log-val">@timestamp, rule.id, rule.description, agent.name, data.srcip, rule.level</span>
+<span class="log-key">Order by</span>: <span class="log-val">@timestamp DESC</span></div>
+  </div>
+
+  <div class="takeaways">
+    <h2>Key Takeaways</h2>
+    <ul>
+      <li>Grafana does not store data. It queries OpenSearch (which stores Wazuh alerts) and renders the results as visual panels. Data freshness depends on the refresh interval.</li>
+      <li>Use Time Series panels for attack volume trends and spike detection. Use Stat panels for at-a-glance numbers. Use Table panels for actionable alert lists.</li>
+      <li>A spike in the alert time series always warrants investigation. Click the spike period to filter the table panel to that time window and see the individual alerts.</li>
+      <li>Grafana alert rules fire notifications when conditions (such as more than 5 level-10 alerts in 5 minutes) are met. Configure these to receive out-of-hours incident notifications.</li>
+      <li>The standard Lucene query for critical alerts is: rule.level:[10 TO 15] with a Date Histogram aggregation for time series, or Terms aggregation on data.srcip for the top attacker bar chart.</li>
+    </ul>
+  </div>
+
+</main>
+<nav class="chapter-nav" style="margin-top:0;">
+  <a class="nav-home" href="index.html">Home</a>
+  <a href="13-sophos-forensics.html">&larr; Chapter 12</a>
+  <span class="chapter-nav-spacer"></span>
+  <a href="15-kali-recon.html">Next: Kali Recon Toolkit &rarr;</a>
+</nav>
+</body>
+</html>

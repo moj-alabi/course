@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Incident Response | SLCA Cyber Academy</title>
+  <link rel="stylesheet" href="../style.css" />
+  <style>
+    .track-hero {
+      background: linear-gradient(135deg, #1a1a1a 0%, #2a1a0a 100%);
+      border-left: 5px solid #CC5500;
+      padding: 2rem 2.5rem;
+      margin-bottom: 2rem;
+      border-radius: 0 8px 8px 0;
+    }
+    .track-hero h1 { color: #fff; margin: 0 0 0.5rem 0; font-size: 1.8rem; }
+    .track-hero p  { color: #aaa; margin: 0; font-size: 0.95rem; max-width: 640px; }
+    .track-badge {
+      display: inline-block;
+      background: #CC5500;
+      color: #fff;
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 12px;
+      margin-bottom: 0.75rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .course-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 1.25rem;
+      margin-top: 1.5rem;
+    }
+
+    .course-card {
+      display: flex;
+      flex-direction: column;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      overflow: hidden;
+      text-decoration: none;
+      color: inherit;
+      transition: box-shadow 0.15s, transform 0.15s;
+      background: #fff;
+    }
+    .course-card:hover { box-shadow: 0 4px 20px rgba(204,85,0,0.15); transform: translateY(-2px); }
+    .course-card.coming-soon { opacity: 0.55; pointer-events: none; }
+
+    .course-card-header {
+      background: #CC5500;
+      padding: 1.25rem 1.5rem 1rem;
+      color: #fff;
+    }
+    .course-card.coming-soon .course-card-header { background: #888; }
+
+    .course-num { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.1em; opacity: 0.8; text-transform: uppercase; margin-bottom: 0.35rem; }
+    .course-title { font-size: 1.1rem; font-weight: 700; line-height: 1.3; margin: 0; }
+
+    .course-card-body { padding: 1.25rem 1.5rem; flex: 1; display: flex; flex-direction: column; gap: 0.75rem; }
+    .course-desc { font-size: 0.875rem; color: #555; line-height: 1.55; }
+
+    .course-meta {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      margin-top: auto;
+    }
+    .meta-pill {
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 12px;
+      letter-spacing: 0.05em;
+    }
+    .pill-chapters  { background: #fff3e0; color: #b34000; border: 1px solid #f0c060; }
+    .pill-level     { background: #e8f5e9; color: #1a5a1a; border: 1px solid #80c080; }
+    .pill-available { background: #e3f2fd; color: #1a3a6a; border: 1px solid #6090c0; }
+    .pill-soon      { background: #f5f5f5; color: #888; border: 1px solid #ccc; }
+
+    .course-card-footer {
+      padding: 0.75rem 1.5rem;
+      border-top: 1px solid #f0f0f0;
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: #CC5500;
+    }
+    .course-card.coming-soon .course-card-footer { color: #aaa; }
+  </style>
+</head>
+<body>
+<header class="site-header">
+  <a class="logo" href="../index.html">
+    <div class="logo-mark"><img src="../SLCA.png" alt="SLCA" style="width:100%;height:100%;object-fit:contain;" /></div>
+    <div><div class="logo-text">Shef<span>Labs</span></div><div class="header-subtitle">Cyber Academy</div></div>
+  </a>
+  <div style="font-size:0.85rem; color:#888;">Incident Response Track</div>
+</header>
+
+<nav class="chapter-nav">
+  <a class="nav-home" href="../index.html">Academy Home</a>
+  <span style="color:#888; font-size:0.85rem;">Incident Response</span>
+  <span class="chapter-nav-spacer"></span>
+</nav>
+
+<main class="page-wrapper">
+
+  <div class="track-hero">
+    <div class="track-badge">Track</div>
+    <h1>Incident Response</h1>
+    <p>Learn to detect, investigate, and document security incidents using a real defensive tool stack. From reading your first packet to writing a professional IR report, these courses build practical skills you can apply on day one.</p>
+  </div>
+
+  <h2 style="font-size:1.1rem; color:#555; font-weight:600; margin:0 0 0.5rem 0;">Courses in this track</h2>
+
+  <div class="course-grid">
+
+    <a class="course-card" href="packet-forensics/index.html">
+      <div class="course-card-header">
+        <div class="course-num">Course 1</div>
+        <div class="course-title">Packet Forensics and Network Telemetry</div>
+      </div>
+      <div class="course-card-body">
+        <div class="course-desc">The complete foundation course for IR analysts. Learn how packets move across networks, how to read Wireshark captures, how to query Graylog and Wazuh logs, and how to reconstruct an attack from raw telemetry. Ends with a live 2-minute attack investigation capstone.</div>
+        <div class="course-meta">
+          <span class="meta-pill pill-chapters">18 Chapters</span>
+          <span class="meta-pill pill-level">Beginner to Intermediate</span>
+          <span class="meta-pill pill-available">Available Now</span>
+        </div>
+      </div>
+      <div class="course-card-footer">Start Course &rarr;</div>
+    </a>
+
+    <div class="course-card coming-soon">
+      <div class="course-card-header">
+        <div class="course-num">Course 2</div>
+        <div class="course-title">Log Analysis and SIEM Investigation</div>
+      </div>
+      <div class="course-card-body">
+        <div class="course-desc">Deep dive into Graylog and Wazuh as investigation platforms. Writing advanced queries, building correlation rules, creating dashboards for threat hunting, and triage workflows from raw alert volumes to confirmed incidents.</div>
+        <div class="course-meta">
+          <span class="meta-pill pill-soon">Coming Soon</span>
+        </div>
+      </div>
+      <div class="course-card-footer">Coming Soon</div>
+    </div>
+
+    <div class="course-card coming-soon">
+      <div class="course-card-header">
+        <div class="course-num">Course 3</div>
+        <div class="course-title">Malware Triage and Host Forensics</div>
+      </div>
+      <div class="course-card-body">
+        <div class="course-desc">Live response on a compromised host. Memory forensics with Volatility, process tree analysis, persistence mechanism identification, and writing a containment recommendation from host artefacts.</div>
+        <div class="course-meta">
+          <span class="meta-pill pill-soon">Coming Soon</span>
+        </div>
+      </div>
+      <div class="course-card-footer">Coming Soon</div>
+    </div>
+
+    <div class="course-card coming-soon">
+      <div class="course-card-header">
+        <div class="course-num">Course 4</div>
+        <div class="course-title">IR Playbooks and Escalation Procedures</div>
+      </div>
+      <div class="course-card-body">
+        <div class="course-desc">Writing and using IR playbooks. Severity classification, escalation decision trees, evidence handling chain of custody, and working within NIST and SANS IR frameworks.</div>
+        <div class="course-meta">
+          <span class="meta-pill pill-soon">Coming Soon</span>
+        </div>
+      </div>
+      <div class="course-card-footer">Coming Soon</div>
+    </div>
+
+  </div>
+
+</main>
+
+<footer style="text-align:center; padding:2rem; font-size:0.78rem; color:#aaa; border-top:1px solid #eee; margin-top:3rem;">
+  SLCA Cyber Academy &mdash; Incident Response Track
+</footer>
+</body>
+</html>

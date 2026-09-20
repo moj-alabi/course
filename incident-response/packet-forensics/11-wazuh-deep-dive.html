@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 10 - Wazuh Deep Dive | Shef Labs</title>
+  <link rel="stylesheet" href="../../style.css" />
+</head>
+<body>
+<header class="site-header">
+  <a class="logo" href="../../index.html">
+    <div class="logo-mark"><img src="../../SLCA.png" alt="SLCA" style="width:100%;height:100%;object-fit:contain;" /></div>
+    <div><div class="logo-text">Shef<span>Labs</span></div><div class="header-subtitle">Cyber Academy</div></div>
+  </a>
+  <div style="font-size:0.85rem; color:#888;">Packet Forensics and Network Telemetry</div>
+</header>
+<nav class="chapter-nav">
+  <a class="nav-home" href="index.html">Home</a>
+  <a href="10-detecting-abnormal.html">&larr; Chapter 09</a>
+  <span class="chapter-nav-spacer"></span>
+  <span class="chapter-label">Chapter 11 of 18</span>
+  <a href="12-safeline-deep-dive.html">Next: SafeLine WAF Deep Dive &rarr;</a>
+</nav>
+<main class="page-wrapper">
+
+  <div class="chapter-header">
+    <div class="chapter-number">Chapter 11</div>
+    <h1>Wazuh Deep Dive</h1>
+    <div class="chapter-tagline">Alert levels, decoder pipeline, file integrity monitoring, vulnerability detection, and the full Wazuh alert JSON schema. Every field an analyst needs to know.</div>
+  </div>
+
+  <div class="objectives-box">
+    <h3>Learning Objectives</h3>
+    <ul>
+      <li>Explain Wazuh alert levels 1-15 and what each range means for response priority</li>
+      <li>Describe the decoder pipeline: how raw log text becomes structured JSON fields</li>
+      <li>Read a complete Wazuh alert JSON and extract all relevant fields</li>
+      <li>Understand File Integrity Monitoring (FIM) alerts and what they indicate</li>
+      <li>Describe Wazuh vulnerability detection and how it maps to CVE records</li>
+      <li>Build a simple Wazuh search query to find alerts for a specific IP or rule</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>Wazuh Alert Levels: The Priority Scale</h2>
+    <p>Every Wazuh alert has a <strong>level</strong> from 1 to 15. This number controls whether the alert appears in the queue, triggers a notification, or fires an active response. Understanding the level ranges is the first thing to check when triaging an alert.</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">Wazuh Alert Level Scale</div>
+      <svg viewBox="0 0 820 180" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <rect x="10" y="20" width="150" height="130" rx="6" fill="#f5f5f5" stroke="#bbb" stroke-width="1.5"/>
+        <text x="85" y="50" text-anchor="middle" font-size="22" font-weight="700" fill="#bbb">1-3</text>
+        <text x="85" y="72" text-anchor="middle" font-size="10" font-weight="700" fill="#888">Informational</text>
+        <text x="85" y="92" text-anchor="middle" font-size="8" fill="#888">Policy checks,</text>
+        <text x="85" y="106" text-anchor="middle" font-size="8" fill="#888">audit events</text>
+        <text x="85" y="128" text-anchor="middle" font-size="7.5" fill="#bbb">Usually suppressed</text>
+        <text x="85" y="141" text-anchor="middle" font-size="7.5" fill="#bbb">in dashboards</text>
+
+        <rect x="175" y="20" width="150" height="130" rx="6" fill="#fffbe6" stroke="#f0a500" stroke-width="1.5"/>
+        <text x="250" y="50" text-anchor="middle" font-size="22" font-weight="700" fill="#f0a500">4-6</text>
+        <text x="250" y="72" text-anchor="middle" font-size="10" font-weight="700" fill="#8a5a00">Low / Medium</text>
+        <text x="250" y="92" text-anchor="middle" font-size="8" fill="#555">Authentication</text>
+        <text x="250" y="106" text-anchor="middle" font-size="8" fill="#555">failures, warnings</text>
+        <text x="250" y="128" text-anchor="middle" font-size="7.5" fill="#888">Review during</text>
+        <text x="250" y="141" text-anchor="middle" font-size="7.5" fill="#888">normal shift</text>
+
+        <rect x="340" y="20" width="150" height="130" rx="6" fill="#fff3e8" stroke="#CC5500" stroke-width="2"/>
+        <text x="415" y="50" text-anchor="middle" font-size="22" font-weight="700" fill="#CC5500">7-9</text>
+        <text x="415" y="72" text-anchor="middle" font-size="10" font-weight="700" fill="#CC5500">High</text>
+        <text x="415" y="92" text-anchor="middle" font-size="8" fill="#555">Suspicious activity,</text>
+        <text x="415" y="106" text-anchor="middle" font-size="8" fill="#555">anomalous behaviour</text>
+        <text x="415" y="128" text-anchor="middle" font-size="7.5" fill="#CC5500">Investigate within</text>
+        <text x="415" y="141" text-anchor="middle" font-size="7.5" fill="#CC5500">the current shift</text>
+
+        <rect x="505" y="20" width="150" height="130" rx="6" fill="#fef0f0" stroke="#d63b3b" stroke-width="2"/>
+        <text x="580" y="50" text-anchor="middle" font-size="22" font-weight="700" fill="#d63b3b">10-12</text>
+        <text x="580" y="72" text-anchor="middle" font-size="10" font-weight="700" fill="#d63b3b">Critical</text>
+        <text x="580" y="92" text-anchor="middle" font-size="8" fill="#555">Brute force confirmed,</text>
+        <text x="580" y="106" text-anchor="middle" font-size="8" fill="#555">active exploitation</text>
+        <text x="580" y="128" text-anchor="middle" font-size="7.5" fill="#d63b3b">Investigate and</text>
+        <text x="580" y="141" text-anchor="middle" font-size="7.5" fill="#d63b3b">escalate immediately</text>
+
+        <rect x="670" y="20" width="140" height="130" rx="6" fill="#1a0a0a" stroke="#d63b3b" stroke-width="3"/>
+        <text x="740" y="50" text-anchor="middle" font-size="22" font-weight="700" fill="#ff4444">13-15</text>
+        <text x="740" y="72" text-anchor="middle" font-size="10" font-weight="700" fill="#ff4444">Severe</text>
+        <text x="740" y="92" text-anchor="middle" font-size="8" fill="#ffaaaa">Root compromise,</text>
+        <text x="740" y="106" text-anchor="middle" font-size="8" fill="#ffaaaa">malware confirmed</text>
+        <text x="740" y="128" text-anchor="middle" font-size="7.5" fill="#ff6666">Active response</text>
+        <text x="740" y="141" text-anchor="middle" font-size="7.5" fill="#ff6666">may auto-trigger</text>
+
+      </svg>
+      <div class="diagram-caption">Wazuh levels drive your response priority. Configure your Grafana alert panel to highlight level 10+ in red. By default, Wazuh only displays level 3+ in the alerts view.</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>The Decoder Pipeline</h2>
+    <p>When a raw log line arrives at the Wazuh manager, it passes through a <strong>decoder pipeline</strong> before being matched against rules. The decoder extracts named fields from the raw text. Without a decoder, the rules engine can only match on the full raw string, which is far less reliable.</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">Wazuh Decoder Pipeline</div>
+      <svg viewBox="0 0 820 140" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <rect x="10" y="20" width="175" height="90" rx="6" fill="#1e1e1e" stroke="#555" stroke-width="1"/>
+        <text x="97" y="44" text-anchor="middle" font-size="9" font-weight="700" fill="#9cdcfe">Raw Log Input</text>
+        <text x="97" y="62" text-anchor="middle" font-size="7.5" fill="#ce9178" font-family="Consolas, monospace">Sep 20 10:22:14</text>
+        <text x="97" y="76" text-anchor="middle" font-size="7.5" fill="#ce9178" font-family="Consolas, monospace">sshd[4421]: Failed</text>
+        <text x="97" y="90" text-anchor="middle" font-size="7.5" fill="#ce9178" font-family="Consolas, monospace">password for admin</text>
+        <text x="97" y="104" text-anchor="middle" font-size="7.5" fill="#ce9178" font-family="Consolas, monospace">from 10.0.2.99</text>
+        <line x1="185" y1="65" x2="215" y2="65" stroke="#888" stroke-width="2" marker-end="url(#d1)"/>
+
+        <rect x="215" y="20" width="140" height="90" rx="6" fill="#1a2a1a" stroke="#3aaa3a" stroke-width="1.5"/>
+        <text x="285" y="44" text-anchor="middle" font-size="9" font-weight="700" fill="#b5cea8">Pre-Decoder</text>
+        <text x="285" y="62" text-anchor="middle" font-size="8" fill="#888">Identifies log</text>
+        <text x="285" y="76" text-anchor="middle" font-size="8" fill="#888">format type</text>
+        <text x="285" y="90" text-anchor="middle" font-size="8" fill="#888">syslog, JSON, etc.</text>
+        <line x1="355" y1="65" x2="385" y2="65" stroke="#3aaa3a" stroke-width="2" marker-end="url(#d2)"/>
+
+        <rect x="385" y="20" width="140" height="90" rx="6" fill="#1a1a2a" stroke="#9b59b6" stroke-width="1.5"/>
+        <text x="455" y="44" text-anchor="middle" font-size="9" font-weight="700" fill="#c586c0">Field Decoder</text>
+        <text x="455" y="62" text-anchor="middle" font-size="8" fill="#888">Extracts srcip,</text>
+        <text x="455" y="76" text-anchor="middle" font-size="8" fill="#888">dstuser, program,</text>
+        <text x="455" y="90" text-anchor="middle" font-size="8" fill="#888">message fields</text>
+        <line x1="525" y1="65" x2="555" y2="65" stroke="#9b59b6" stroke-width="2" marker-end="url(#d3)"/>
+
+        <rect x="555" y="20" width="140" height="90" rx="6" fill="#2a1a1a" stroke="#CC5500" stroke-width="1.5"/>
+        <text x="625" y="44" text-anchor="middle" font-size="9" font-weight="700" fill="#f48771">Rules Engine</text>
+        <text x="625" y="62" text-anchor="middle" font-size="8" fill="#888">Matches decoded</text>
+        <text x="625" y="76" text-anchor="middle" font-size="8" fill="#888">fields against</text>
+        <text x="625" y="90" text-anchor="middle" font-size="8" fill="#888">3,000+ rules</text>
+        <line x1="695" y1="65" x2="720" y2="65" stroke="#CC5500" stroke-width="2" marker-end="url(#d4)"/>
+
+        <rect x="720" y="30" width="90" height="60" rx="6" fill="#1a2a1a" stroke="#3aaa3a" stroke-width="2"/>
+        <text x="765" y="55" text-anchor="middle" font-size="8" font-weight="700" fill="#3aaa3a">Alert JSON</text>
+        <text x="765" y="70" text-anchor="middle" font-size="7.5" fill="#888">Stored in</text>
+        <text x="765" y="82" text-anchor="middle" font-size="7.5" fill="#888">OpenSearch</text>
+
+        <defs>
+          <marker id="d1" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#888"/></marker>
+          <marker id="d2" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#3aaa3a"/></marker>
+          <marker id="d3" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#9b59b6"/></marker>
+          <marker id="d4" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#CC5500"/></marker>
+        </defs>
+      </svg>
+      <div class="diagram-caption">The decoder runs before rules. If a log source has no decoder, fields like srcip will be empty and frequency rules that group by source IP will not work.</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Complete Wazuh Alert JSON Schema</h2>
+    <p>This is a realistic, fully populated Wazuh alert as it appears in OpenSearch. Every field an analyst may need to query is labelled.</p>
+
+    <div class="log-label">Full Wazuh Alert JSON - SSH Brute Force (Rule 5712)</div>
+    <div class="log-block">{
+  "<span class="log-key">timestamp</span>":       "<span class="log-hl">2026-09-20T10:22:14.412+0000</span>",
+  "<span class="log-key">rule</span>": {
+    "<span class="log-key">id</span>":             "<span class="log-val">5712</span>",
+    "<span class="log-key">description</span>":  "<span class="log-val">SSHD brute force trying to get access to the system</span>",
+    "<span class="log-key">level</span>":         <span class="log-num">10</span>,
+    "<span class="log-key">groups</span>":        ["<span class="log-val">syslog</span>", "<span class="log-val">sshd</span>", "<span class="log-val">authentication_failures</span>"],
+    "<span class="log-key">mitre</span>":         { "<span class="log-key">technique</span>": ["<span class="log-val">T1110</span>"], "<span class="log-key">tactic</span>": ["<span class="log-val">Credential Access</span>"] }
+  },
+  "<span class="log-key">agent</span>": {
+    "<span class="log-key">id</span>":             "<span class="log-val">003</span>",
+    "<span class="log-key">name</span>":           "<span class="log-val">web-server-01</span>",
+    "<span class="log-key">ip</span>":             "<span class="log-val">10.0.1.10</span>"
+  },
+  "<span class="log-key">manager</span>": {
+    "<span class="log-key">name</span>":           "<span class="log-val">wazuh-manager</span>"
+  },
+  "<span class="log-key">data</span>": {
+    "<span class="log-key">srcip</span>":          "<span class="log-hl">10.0.2.99</span>",
+    "<span class="log-key">dstuser</span>":        "<span class="log-val">admin</span>",
+    "<span class="log-key">dstport</span>":        "<span class="log-val">22</span>",
+    "<span class="log-key">protocol</span>":       "<span class="log-val">ssh2</span>"
+  },
+  "<span class="log-key">full_log</span>":         "<span class="log-val">Sep 20 10:22:14 web-server-01 sshd[4421]: Failed password for admin from 10.0.2.99 port 54821 ssh2</span>",
+  "<span class="log-key">location</span>":        "<span class="log-val">/var/log/auth.log</span>",
+  "<span class="log-key">decoder</span>": {
+    "<span class="log-key">name</span>":           "<span class="log-val">sshd</span>"
+  }
+}</div>
+
+    <table class="field-table">
+      <thead><tr><th>Field Path</th><th>Type</th><th>Analyst Use</th></tr></thead>
+      <tbody>
+        <tr><td>timestamp</td><td>ISO 8601 datetime</td><td>Use to correlate with Sophos and SafeLine events. Always convert to UTC first.</td></tr>
+        <tr><td>rule.id</td><td>string</td><td>Look up in Wazuh rule documentation for context. Filter by rule.id to find all instances.</td></tr>
+        <tr><td>rule.level</td><td>integer 1-15</td><td>Your primary triage indicator. Alert on level 10+. Review level 7-9 daily.</td></tr>
+        <tr><td>rule.groups</td><td>string array</td><td>Use to filter by category (e.g. authentication_failures, syscheck, web_log).</td></tr>
+        <tr><td>rule.mitre.technique</td><td>string (MITRE ATT&amp;CK ID)</td><td>Maps the alert to the ATT&amp;CK framework. T1110 = Brute Force. Use for threat reports.</td></tr>
+        <tr><td>agent.name</td><td>string</td><td>Which managed host generated the alert. Cross-reference with your asset inventory.</td></tr>
+        <tr><td>agent.ip</td><td>IP address</td><td>The host where the event occurred. Not the attacker IP.</td></tr>
+        <tr><td>data.srcip</td><td>IP address</td><td>The attacker source IP. This is what you search for in Sophos logs. Check against threat intel.</td></tr>
+        <tr><td>data.dstuser</td><td>string</td><td>The username being attacked. Check if this account has elevated privileges.</td></tr>
+        <tr><td>full_log</td><td>string</td><td>The original raw log line before decoding. Useful when decoded fields are missing.</td></tr>
+        <tr><td>location</td><td>file path</td><td>Which log file on the agent this came from. Useful for verifying the source is trusted.</td></tr>
+        <tr><td>decoder.name</td><td>string</td><td>Which decoder parsed this event. If "unknown", the event was not decoded and fields are missing.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>File Integrity Monitoring (FIM) Alerts</h2>
+    <p>Wazuh's FIM module takes a hash of every monitored file and compares it at regular intervals. Any change - permissions, owner, content - generates a FIM alert. FIM is critical for detecting malware dropping new files, attackers modifying configuration files, and supply chain compromise of system binaries.</p>
+
+    <div class="log-label">Wazuh FIM Alert - Modified Binary (High Severity)</div>
+    <div class="log-block">{
+  "<span class="log-key">timestamp</span>":        "<span class="log-hl">2026-09-20T11:55:01.002Z</span>",
+  "<span class="log-key">rule</span>": {
+    "<span class="log-key">id</span>":              "<span class="log-val">550</span>",
+    "<span class="log-key">description</span>":   "<span class="log-val">Integrity checksum changed</span>",
+    "<span class="log-key">level</span>":          <span class="log-num">7</span>,
+    "<span class="log-key">groups</span>":         ["<span class="log-val">syscheck</span>"]
+  },
+  "<span class="log-key">syscheck</span>": {
+    "<span class="log-key">path</span>":            "<span class="log-hl">/usr/bin/python3</span>",
+    "<span class="log-key">event</span>":           "<span class="log-hl">modified</span>",
+    "<span class="log-key">sha256_before</span>":   "<span class="log-val">a1b2c3d4...</span>",
+    "<span class="log-key">sha256_after</span>":    "<span class="log-hl">deadbeef...</span>",
+    "<span class="log-key">uname_before</span>":   "<span class="log-val">root</span>",
+    "<span class="log-key">uname_after</span>":    "<span class="log-val">root</span>",
+    "<span class="log-key">inode_before</span>":   <span class="log-val">45231</span>,
+    "<span class="log-key">inode_after</span>":    <span class="log-num">98765</span>
+  },
+  "<span class="log-key">agent</span>": { "<span class="log-key">name</span>": "<span class="log-val">web-server-01</span>" }
+}</div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Responding to a Modified System Binary</div>
+      A change to /usr/bin/python3 or any file in /bin or /usr/bin is a critical indicator of compromise. Immediately: (1) isolate the host from the network, (2) take a memory image if possible, (3) compare the new SHA256 hash against a known-good baseline or the package manager, (4) check /var/log/auth.log for logins around the time of the change, (5) do not reboot the host until you have a memory image.
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>OpenSearch Query Reference</h2>
+    <p>Wazuh stores all alerts in OpenSearch. Use these queries in Grafana or directly in the Wazuh dashboard to filter events efficiently.</p>
+
+    <table class="field-table">
+      <thead><tr><th>What You Want</th><th>OpenSearch Query</th></tr></thead>
+      <tbody>
+        <tr><td>All alerts level 10 or above</td><td>rule.level: [10 TO 15]</td></tr>
+        <tr><td>All alerts from a specific attacker IP</td><td>data.srcip: "10.0.2.99"</td></tr>
+        <tr><td>All SSH brute force alerts</td><td>rule.id: "5712"</td></tr>
+        <tr><td>All authentication failure alerts</td><td>rule.groups: "authentication_failures"</td></tr>
+        <tr><td>All FIM alerts for /etc or /bin</td><td>rule.groups: "syscheck" AND syscheck.path: /etc* OR syscheck.path: /bin*</td></tr>
+        <tr><td>All alerts for a specific agent</td><td>agent.name: "web-server-01"</td></tr>
+        <tr><td>All alerts in a time window</td><td>timestamp: [2026-09-20T10:00:00 TO 2026-09-20T11:00:00]</td></tr>
+        <tr><td>MITRE ATT&amp;CK technique lookup</td><td>rule.mitre.technique: "T1110"</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="takeaways">
+    <h2>Key Takeaways</h2>
+    <ul>
+      <li>Wazuh levels 1-6 are informational and low priority. Levels 7-9 need investigation in the current shift. Levels 10-12 need immediate escalation. Levels 13-15 may trigger automated responses.</li>
+      <li>The decoder pipeline runs before rules. If a log source has no decoder, the srcip field will be empty and frequency rules will not group events correctly.</li>
+      <li>The full Wazuh alert JSON contains rule metadata, MITRE ATT&amp;CK mappings, agent information, decoded fields, and the original raw log line. The raw full_log field is the fallback when decoded fields are missing.</li>
+      <li>FIM alerts on system binary paths (/bin, /usr/bin, /etc) are high-severity indicators of compromise. Treat them as active incidents.</li>
+      <li>Learn the five OpenSearch queries that cover 90% of investigations: by level range, by source IP, by rule ID, by agent name, and by time window.</li>
+    </ul>
+  </div>
+
+</main>
+<nav class="chapter-nav" style="margin-top:0;">
+  <a class="nav-home" href="index.html">Home</a>
+  <a href="10-detecting-abnormal.html">&larr; Chapter 09</a>
+  <span class="chapter-nav-spacer"></span>
+  <a href="12-safeline-deep-dive.html">Next: SafeLine WAF Deep Dive &rarr;</a>
+</nav>
+</body>
+</html>

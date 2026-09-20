@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 07 - Reading Logs Like an Analyst | Shef Labs</title>
+  <link rel="stylesheet" href="../../style.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <a class="logo" href="../../index.html">
+    <div class="logo-mark"><img src="../../SLCA.png" alt="SLCA" style="width:100%;height:100%;object-fit:contain;" /></div>
+    <div>
+      <div class="logo-text">Shef<span>Labs</span></div>
+      <div class="header-subtitle">Cyber Academy</div>
+    </div>
+  </a>
+  <div style="font-size:0.85rem; color:#888;">Packet Forensics and Network Telemetry</div>
+</header>
+
+<nav class="chapter-nav">
+  <a class="nav-home" href="index.html">Home</a>
+  <a href="07-http-becomes-https.html">&larr; Chapter 06</a>
+  <span class="chapter-nav-spacer"></span>
+  <span class="chapter-label">Chapter 08 of 18</span>
+  <a href="09-packets-to-evidence.html">Next: From Packets to Evidence &rarr;</a>
+</nav>
+
+<main class="page-wrapper">
+
+  <div class="chapter-header">
+    <div class="chapter-number">Chapter 08</div>
+    <h1>Reading Logs Like an Analyst</h1>
+    <div class="chapter-tagline">Log anatomy, common formats, pattern recognition and side-by-side field reference tables for Wazuh, Sophos and SafeLine. The skill that ties every chapter together.</div>
+  </div>
+
+  <div class="objectives-box">
+    <h3>Learning Objectives</h3>
+    <ul>
+      <li>Identify the universal components of any log line: timestamp, host, severity, message</li>
+      <li>Read and parse four common log formats: syslog, JSON, CEF and key=value</li>
+      <li>Distinguish normal traffic patterns from attack patterns by reading logs</li>
+      <li>Identify brute force, scanning, exfiltration and lateral movement signatures in logs</li>
+      <li>Compare Wazuh, Sophos and SafeLine log field structures side by side</li>
+      <li>Apply a systematic three-step method for investigating any alert</li>
+    </ul>
+  </div>
+
+  <!-- ANATOMY -->
+  <div class="section">
+    <h2>The Anatomy of Any Log Line</h2>
+    <p>Every log line ever written, no matter what system produced it, contains a small set of fundamental pieces of information. Once you learn to spot these pieces you can read any log from any tool without needing to look up documentation.</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">Universal Log Line Anatomy</div>
+      <svg viewBox="0 0 820 160" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <!-- Log line bar -->
+        <rect x="10" y="20" width="800" height="50" rx="5" fill="#1e1e1e" stroke="#333" stroke-width="1"/>
+
+        <!-- Segments inside the bar -->
+        <rect x="12" y="22" width="130" height="46" rx="4" fill="#1a3a5a"/>
+        <text x="77" y="42" text-anchor="middle" font-size="9" font-weight="700" fill="#9cdcfe">TIMESTAMP</text>
+        <text x="77" y="56" text-anchor="middle" font-size="7.5" fill="#ce9178">2026-09-20T10:05:33Z</text>
+
+        <rect x="146" y="22" width="100" height="46" rx="4" fill="#1a3a1a"/>
+        <text x="196" y="42" text-anchor="middle" font-size="9" font-weight="700" fill="#b5cea8">HOSTNAME</text>
+        <text x="196" y="56" text-anchor="middle" font-size="7.5" fill="#ce9178">web-server-01</text>
+
+        <rect x="250" y="22" width="90" height="46" rx="4" fill="#3a1a1a"/>
+        <text x="295" y="42" text-anchor="middle" font-size="9" font-weight="700" fill="#f48771">SEVERITY</text>
+        <text x="295" y="56" text-anchor="middle" font-size="7.5" fill="#ce9178">WARNING</text>
+
+        <rect x="344" y="22" width="100" height="46" rx="4" fill="#1a1a3a"/>
+        <text x="394" y="42" text-anchor="middle" font-size="9" font-weight="700" fill="#c586c0">PROCESS</text>
+        <text x="394" y="56" text-anchor="middle" font-size="7.5" fill="#ce9178">sshd[4421]</text>
+
+        <rect x="448" y="22" width="360" height="46" rx="4" fill="#2a2a2a"/>
+        <text x="628" y="42" text-anchor="middle" font-size="9" font-weight="700" fill="#6a9955">MESSAGE / EVENT DATA</text>
+        <text x="628" y="56" text-anchor="middle" font-size="7.5" fill="#ce9178">Failed password for admin from 10.0.2.99 port 54821 ssh2</text>
+
+        <!-- Labels below -->
+        <text x="77" y="100" text-anchor="middle" font-size="8" fill="#CC5500" font-weight="700">When?</text>
+        <text x="77" y="114" text-anchor="middle" font-size="7.5" fill="#888">Correlate events</text>
+        <text x="77" y="126" text-anchor="middle" font-size="7.5" fill="#888">across tools</text>
+
+        <text x="196" y="100" text-anchor="middle" font-size="8" fill="#CC5500" font-weight="700">Which machine?</text>
+        <text x="196" y="114" text-anchor="middle" font-size="7.5" fill="#888">Is it in your</text>
+        <text x="196" y="126" text-anchor="middle" font-size="7.5" fill="#888">asset inventory?</text>
+
+        <text x="295" y="100" text-anchor="middle" font-size="8" fill="#CC5500" font-weight="700">How bad?</text>
+        <text x="295" y="114" text-anchor="middle" font-size="7.5" fill="#888">Prioritise your</text>
+        <text x="295" y="126" text-anchor="middle" font-size="7.5" fill="#888">response queue</text>
+
+        <text x="394" y="100" text-anchor="middle" font-size="8" fill="#CC5500" font-weight="700">What process?</text>
+        <text x="394" y="114" text-anchor="middle" font-size="7.5" fill="#888">Scope the</text>
+        <text x="394" y="126" text-anchor="middle" font-size="7.5" fill="#888">affected service</text>
+
+        <text x="628" y="100" text-anchor="middle" font-size="8" fill="#CC5500" font-weight="700">What happened?</text>
+        <text x="628" y="114" text-anchor="middle" font-size="7.5" fill="#888">Source IP, destination, action taken, username, path, status code</text>
+
+      </svg>
+      <div class="diagram-caption">Every log line has these five components in some form. Learning to extract them quickly is the core skill of log analysis.</div>
+    </div>
+  </div>
+
+  <!-- LOG FORMATS -->
+  <div class="section">
+    <h2>The Four Common Log Formats</h2>
+    <p>Different tools write logs in different formats. You will encounter all four of these in your environment. Once you know the structure of each, you can parse any of them mentally in seconds.</p>
+
+    <h3>1. Syslog (RFC 5424)</h3>
+    <p>The standard Unix/Linux log format. Used by operating systems, SSH, cron, authentication systems, and network devices. Wazuh agents collect syslog from managed hosts.</p>
+    <div class="log-block"><span class="log-comment"># Format: &lt;PRI&gt;VERSION TIMESTAMP HOSTNAME APP-NAME PROCID MSGID MSG</span>
+&lt;34&gt;1 <span class="log-hl">2026-09-20T10:05:33.411Z</span> <span class="log-key">web-server-01</span> <span class="log-key">sshd</span> <span class="log-num">4421</span> - - <span class="log-val">Failed password for admin from 10.0.2.99 port 54821 ssh2</span>
+
+<span class="log-comment"># Breaking it down:</span>
+<span class="log-comment"># &lt;34&gt;   = Priority: facility 4 (auth) * 8 + severity 2 (critical) = 34</span>
+<span class="log-comment"># 1      = Syslog version</span>
+<span class="log-comment"># Timestamp in ISO 8601 UTC format</span>
+<span class="log-comment"># web-server-01 = hostname that generated this log</span>
+<span class="log-comment"># sshd   = application name</span>
+<span class="log-comment"># 4421   = process ID</span>
+<span class="log-comment"># MSG    = the actual event message</span></div>
+
+    <h3>2. JSON (Structured)</h3>
+    <p>Modern tools including Wazuh write alerts in JSON. Every field has a name and a value, making them easy to query programmatically and in dashboards.</p>
+    <div class="log-block">{
+  "<span class="log-key">timestamp</span>": "<span class="log-hl">2026-09-20T10:05:33.411Z</span>",
+  "<span class="log-key">rule</span>": { "<span class="log-key">id</span>": "<span class="log-val">5710</span>", "<span class="log-key">description</span>": "<span class="log-val">SSH authentication failed</span>", "<span class="log-key">level</span>": <span class="log-num">5</span> },
+  "<span class="log-key">agent</span>": { "<span class="log-key">name</span>": "<span class="log-val">web-server-01</span>", "<span class="log-key">ip</span>": "<span class="log-val">10.0.1.10</span>" },
+  "<span class="log-key">data</span>": {
+    "<span class="log-key">srcip</span>":  "<span class="log-hl">10.0.2.99</span>",
+    "<span class="log-key">dstuser</span>": "<span class="log-val">admin</span>",
+    "<span class="log-key">dstport</span>": "<span class="log-val">22</span>"
+  }
+}
+<span class="log-comment"># JSON is easy to filter: data.srcip == "10.0.2.99" and rule.level &gt;= 5</span></div>
+
+    <h3>3. CEF (Common Event Format)</h3>
+    <p>Used by SIEM vendors and security appliances (ArcSight, some Sophos exports). Fields are pipe-delimited in the header, then key=value in the extension.</p>
+    <div class="log-block"><span class="log-comment"># Format: CEF:Version|Device Vendor|Device Product|Device Version|SignatureID|Name|Severity|Extension</span>
+CEF:0|<span class="log-key">Sophos</span>|<span class="log-key">XGS Firewall</span>|<span class="log-key">20.0</span>|<span class="log-val">18487</span>|<span class="log-val">TCP SYN Port Scan</span>|<span class="log-num">8</span>|<span class="log-key">src</span>=<span class="log-hl">10.0.2.99</span> <span class="log-key">dst</span>=<span class="log-val">10.0.1.10</span> <span class="log-key">spt</span>=<span class="log-val">45231</span> <span class="log-key">dpt</span>=<span class="log-val">22</span> <span class="log-key">proto</span>=<span class="log-val">TCP</span> <span class="log-key">act</span>=<span class="log-val">Drop</span>
+
+<span class="log-comment"># Severity: 0-3 Low, 4-6 Medium, 7-8 High, 9-10 Very High</span>
+<span class="log-comment"># Extension fields: src, dst, spt=src port, dpt=dst port, act=action</span></div>
+
+    <h3>4. Key=Value (Sophos Native Format)</h3>
+    <p>Sophos firewall logs use a flat key=value format. Every field is a name=value pair separated by spaces.</p>
+    <div class="log-block"><span class="log-key">date</span>=<span class="log-val">2026-09-20</span> <span class="log-key">time</span>=<span class="log-val">10:22:14</span> <span class="log-key">device_name</span>=<span class="log-val">"SophosXGS-HQ"</span> <span class="log-key">log_id</span>=<span class="log-val">010302600001</span> <span class="log-key">log_type</span>=<span class="log-val">"IPS"</span> <span class="log-key">log_subtype</span>=<span class="log-val">"Drop"</span> <span class="log-key">signature_id</span>=<span class="log-hl">18487</span> <span class="log-key">signature_name</span>=<span class="log-val">"TCP SYN Port Scan"</span> <span class="log-key">severity</span>=<span class="log-val">"High"</span> <span class="log-key">src_ip</span>=<span class="log-hl">10.0.2.99</span> <span class="log-key">dst_ip</span>=<span class="log-val">10.0.1.10</span> <span class="log-key">src_port</span>=<span class="log-val">45231</span> <span class="log-key">dst_port</span>=<span class="log-val">22</span>
+
+<span class="log-comment"># Parsing: split on spaces, then split each token on first "=" sign</span>
+<span class="log-comment"># Quoted values: read from opening quote to closing quote</span></div>
+  </div>
+
+  <!-- PATTERN RECOGNITION -->
+  <div class="section">
+    <h2>Log Pattern Recognition: Normal vs Attack</h2>
+    <p>Pattern recognition is the ability to look at a stream of log lines and identify something that does not belong. This comes from knowing what normal looks like. Below are the most important attack patterns every analyst must recognise on sight.</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">Attack Pattern Library - What to Look for in Logs</div>
+      <svg viewBox="0 0 820 420" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <!-- Brute Force -->
+        <rect x="10" y="10" width="380" height="120" rx="7" fill="#fef0f0" stroke="#d63b3b" stroke-width="2"/>
+        <rect x="10" y="10" width="380" height="26" rx="7" fill="#d63b3b"/>
+        <text x="200" y="27" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">Brute Force / Credential Stuffing</text>
+        <text x="22" y="55" font-size="8" fill="#1e1e1e" font-family="Consolas, monospace">10:01:02 Failed password for admin from 10.0.2.99</text>
+        <text x="22" y="69" font-size="8" fill="#1e1e1e" font-family="Consolas, monospace">10:01:03 Failed password for admin from 10.0.2.99</text>
+        <text x="22" y="83" font-size="8" fill="#1e1e1e" font-family="Consolas, monospace">10:01:04 Failed password for admin from 10.0.2.99</text>
+        <text x="22" y="97" font-size="8" fill="#d63b3b" font-weight="700" font-family="Consolas, monospace">10:01:05 Accepted password for admin from 10.0.2.99</text>
+        <text x="200" y="118" text-anchor="middle" font-size="7.5" fill="#888">Signal: same src_ip, same user, repeated failures then success</text>
+
+        <!-- Directory Scan -->
+        <rect x="420" y="10" width="380" height="120" rx="7" fill="#fef0f0" stroke="#d63b3b" stroke-width="2"/>
+        <rect x="420" y="10" width="380" height="26" rx="7" fill="#d63b3b"/>
+        <text x="610" y="27" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">Directory / Path Enumeration</text>
+        <text x="432" y="55" font-size="8" fill="#1e1e1e" font-family="Consolas, monospace">10:03:11 GET /.env 404 from 185.220.101.45</text>
+        <text x="432" y="69" font-size="8" fill="#1e1e1e" font-family="Consolas, monospace">10:03:11 GET /config.php 404 from 185.220.101.45</text>
+        <text x="432" y="83" font-size="8" fill="#1e1e1e" font-family="Consolas, monospace">10:03:11 GET /wp-login.php 404 from 185.220.101.45</text>
+        <text x="432" y="97" font-size="8" fill="#1e1e1e" font-family="Consolas, monospace">10:03:12 GET /admin/login 404 from 185.220.101.45</text>
+        <text x="610" y="118" text-anchor="middle" font-size="7.5" fill="#888">Signal: same src_ip, many 404s, high request rate, sequential paths</text>
+
+        <!-- Port Scan -->
+        <rect x="10" y="145" width="380" height="120" rx="7" fill="#fffbe6" stroke="#f0a500" stroke-width="2"/>
+        <rect x="10" y="145" width="380" height="26" rx="7" fill="#f0a500"/>
+        <text x="200" y="162" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">Port Scan (Sophos IPS Log)</text>
+        <text x="22" y="190" font-size="8" fill="#1e1e1e" font-family="Consolas, monospace">10:22:14 DROP src=10.0.2.99 dst=10.0.1.10 dpt=22</text>
+        <text x="22" y="204" font-size="8" fill="#1e1e1e" font-family="Consolas, monospace">10:22:14 DROP src=10.0.2.99 dst=10.0.1.10 dpt=80</text>
+        <text x="22" y="218" font-size="8" fill="#1e1e1e" font-family="Consolas, monospace">10:22:14 DROP src=10.0.2.99 dst=10.0.1.10 dpt=443</text>
+        <text x="22" y="232" font-size="8" fill="#1e1e1e" font-family="Consolas, monospace">10:22:14 DROP src=10.0.2.99 dst=10.0.1.10 dpt=3389</text>
+        <text x="200" y="253" text-anchor="middle" font-size="7.5" fill="#888">Signal: same src, same dst, many different dst_ports, same timestamp</text>
+
+        <!-- Data Exfiltration -->
+        <rect x="420" y="145" width="380" height="120" rx="7" fill="#fffbe6" stroke="#f0a500" stroke-width="2"/>
+        <rect x="420" y="145" width="380" height="26" rx="7" fill="#f0a500"/>
+        <text x="610" y="162" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">Data Exfiltration (Sophos Flow Log)</text>
+        <text x="432" y="190" font-size="8" fill="#1e1e1e" font-family="Consolas, monospace">10:30:01 src=10.0.1.10 dst=185.220.101.45 sent=142bytes</text>
+        <text x="432" y="204" font-size="8" fill="#1e1e1e" font-family="Consolas, monospace">10:30:45 src=10.0.1.10 dst=185.220.101.45 sent=88000bytes</text>
+        <text x="432" y="218" font-size="8" fill="#1e1e1e" font-family="Consolas, monospace">10:31:22 src=10.0.1.10 dst=185.220.101.45 sent=95000bytes</text>
+        <text x="432" y="232" font-size="8" fill="#1e1e1e" font-family="Consolas, monospace">10:32:01 src=10.0.1.10 dst=185.220.101.45 sent=102000bytes</text>
+        <text x="610" y="253" text-anchor="middle" font-size="7.5" fill="#888">Signal: internal host, external unknown IP, large and growing sent_bytes</text>
+
+        <!-- C2 Beaconing -->
+        <rect x="10" y="280" width="380" height="120" rx="7" fill="#fef0f0" stroke="#d63b3b" stroke-width="2"/>
+        <rect x="10" y="280" width="380" height="26" rx="7" fill="#d63b3b"/>
+        <text x="200" y="297" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">C2 Beaconing (DNS Log)</text>
+        <text x="22" y="325" font-size="8" fill="#1e1e1e" font-family="Consolas, monospace">10:00:00 DNS query c2host.evil.com from 10.0.1.10</text>
+        <text x="22" y="339" font-size="8" fill="#1e1e1e" font-family="Consolas, monospace">10:05:00 DNS query c2host.evil.com from 10.0.1.10</text>
+        <text x="22" y="353" font-size="8" fill="#1e1e1e" font-family="Consolas, monospace">10:10:00 DNS query c2host.evil.com from 10.0.1.10</text>
+        <text x="22" y="367" font-size="8" fill="#1e1e1e" font-family="Consolas, monospace">10:15:00 DNS query c2host.evil.com from 10.0.1.10</text>
+        <text x="200" y="388" text-anchor="middle" font-size="7.5" fill="#888">Signal: same domain, same interval (every 5 min), same internal host</text>
+
+        <!-- Lateral Movement -->
+        <rect x="420" y="280" width="380" height="120" rx="7" fill="#eef5fb" stroke="#3a7fc1" stroke-width="2"/>
+        <rect x="420" y="280" width="380" height="26" rx="7" fill="#3a7fc1"/>
+        <text x="610" y="297" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">Lateral Movement (Wazuh)</text>
+        <text x="432" y="325" font-size="8" fill="#1e1e1e" font-family="Consolas, monospace">10:35:01 Login success admin 10.0.1.10 -> 10.0.1.20</text>
+        <text x="432" y="339" font-size="8" fill="#1e1e1e" font-family="Consolas, monospace">10:35:22 Login success admin 10.0.1.10 -> 10.0.1.30</text>
+        <text x="432" y="353" font-size="8" fill="#1e1e1e" font-family="Consolas, monospace">10:35:45 Login success admin 10.0.1.10 -> 10.0.1.40</text>
+        <text x="432" y="367" font-size="8" fill="#1e1e1e" font-family="Consolas, monospace">10:36:01 File access \ADMIN$ from 10.0.1.10</text>
+        <text x="610" y="388" text-anchor="middle" font-size="7.5" fill="#888">Signal: one source authenticating to many internal hosts rapidly</text>
+
+      </svg>
+      <div class="diagram-caption">These six patterns cover the majority of incidents you will investigate. Each pattern has a distinct shape in logs that becomes recognisable with practice.</div>
+    </div>
+  </div>
+
+  <!-- SIDE BY SIDE FIELD REFERENCE -->
+  <div class="section">
+    <h2>Side-by-Side Log Field Comparison: Wazuh, Sophos, SafeLine</h2>
+    <p>The same event (an SSH brute-force attack) produces different log entries in each tool. Here is what each tool reports and how the fields map to each other.</p>
+
+    <h3>Scenario: SSH Brute Force from 10.0.2.99 to 10.0.1.10</h3>
+
+    <div class="log-label">Wazuh Alert (JSON) - SSH brute force detected by agent on target host</div>
+    <div class="log-block">{
+  "<span class="log-key">timestamp</span>":          "<span class="log-hl">2026-09-20T10:22:14.412Z</span>",
+  "<span class="log-key">rule.id</span>":            "<span class="log-val">5712</span>",
+  "<span class="log-key">rule.description</span>":   "<span class="log-val">SSHD brute force trying to get access to the system</span>",
+  "<span class="log-key">rule.level</span>":         <span class="log-num">10</span>,
+  "<span class="log-key">agent.name</span>":         "<span class="log-val">web-server-01</span>",
+  "<span class="log-key">agent.ip</span>":           "<span class="log-val">10.0.1.10</span>",
+  "<span class="log-key">data.srcip</span>":         "<span class="log-hl">10.0.2.99</span>",
+  "<span class="log-key">data.dstuser</span>":       "<span class="log-val">admin</span>",
+  "<span class="log-key">data.dstport</span>":       "<span class="log-val">22</span>"
+}</div>
+
+    <div class="log-label">Sophos Firewall Log (key=value) - same attack, seen at network perimeter</div>
+    <div class="log-block"><span class="log-key">date</span>=<span class="log-hl">2026-09-20</span> <span class="log-key">time</span>=<span class="log-hl">10:22:14</span> <span class="log-key">log_type</span>=<span class="log-val">"Firewall"</span> <span class="log-key">log_subtype</span>=<span class="log-val">"Allowed"</span>
+<span class="log-key">src_ip</span>=<span class="log-hl">10.0.2.99</span> <span class="log-key">dst_ip</span>=<span class="log-val">10.0.1.10</span> <span class="log-key">dst_port</span>=<span class="log-val">22</span> <span class="log-key">protocol</span>=<span class="log-val">TCP</span>
+<span class="log-key">sent_bytes</span>=<span class="log-val">412</span> <span class="log-key">recv_bytes</span>=<span class="log-val">880</span>
+<span class="log-comment"># Sophos allowed it through - the brute force traffic itself looks like normal TCP to port 22</span>
+<span class="log-comment"># Sophos only sees network-level info. It cannot see the SSH authentication failures inside the session.</span></div>
+
+    <div class="log-label">Wazuh Syslog (raw, before parsing) - from the SSH daemon itself</div>
+    <div class="log-block"><span class="log-hl">Sep 20 10:22:14</span> web-server-01 sshd[4421]: Failed password for <span class="log-val">admin</span> from <span class="log-hl">10.0.2.99</span> port 54821 ssh2
+Sep 20 10:22:15 web-server-01 sshd[4421]: Failed password for admin from 10.0.2.99 port 54822 ssh2
+Sep 20 10:22:16 web-server-01 sshd[4421]: Failed password for admin from 10.0.2.99 port 54823 ssh2
+<span class="log-comment"># Wazuh agent reads these lines in real time, matches rule 5710 (single fail) then 5712 (brute force)</span>
+<span class="log-comment"># after 8+ failures in 60 seconds, and fires a level-10 alert</span></div>
+
+    <h3>Field Mapping Table</h3>
+    <table class="field-table">
+      <thead><tr><th>Concept</th><th>Wazuh Field</th><th>Sophos Field</th><th>SafeLine Field</th></tr></thead>
+      <tbody>
+        <tr><td>Event time</td><td>timestamp</td><td>date + time</td><td>timestamp</td></tr>
+        <tr><td>Source IP</td><td>data.srcip</td><td>src_ip</td><td>src_ip</td></tr>
+        <tr><td>Destination IP</td><td>data.dstip</td><td>dst_ip</td><td>dst_ip</td></tr>
+        <tr><td>Destination port</td><td>data.dstport</td><td>dst_port</td><td>dst_port</td></tr>
+        <tr><td>Protocol</td><td>data.protocol</td><td>protocol</td><td>http_version</td></tr>
+        <tr><td>Action taken</td><td>rule.description</td><td>log_subtype (Allowed/Denied)</td><td>action (block/allow)</td></tr>
+        <tr><td>Severity</td><td>rule.level (1-15)</td><td>severity (Low/Medium/High/Critical)</td><td>attack_type category</td></tr>
+        <tr><td>Rule matched</td><td>rule.id</td><td>signature_id</td><td>rule_id</td></tr>
+        <tr><td>Affected host</td><td>agent.name</td><td>device_name (firewall itself)</td><td>host (web app)</td></tr>
+        <tr><td>Username</td><td>data.dstuser</td><td>user_name (if SSO)</td><td>(in cookie/header)</td></tr>
+        <tr><td>URL</td><td>data.url (web logs)</td><td>url (with SSL inspect)</td><td>url</td></tr>
+        <tr><td>Bytes out</td><td>data.size</td><td>sent_bytes</td><td>bytes_sent</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- THREE STEP METHOD -->
+  <div class="section">
+    <h2>The Three-Step Investigation Method</h2>
+    <p>When an alert fires, apply this method consistently before drawing any conclusions. It works for every alert from every tool.</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">Three-Step Alert Investigation Process</div>
+      <svg viewBox="0 0 820 150" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <rect x="10" y="20" width="240" height="110" rx="8" fill="#fff3e8" stroke="#CC5500" stroke-width="2"/>
+        <text x="130" y="48" text-anchor="middle" font-size="11" font-weight="700" fill="#CC5500">Step 1: Orient</text>
+        <text x="130" y="66" text-anchor="middle" font-size="8.5" fill="#333">Who is the source IP?</text>
+        <text x="130" y="80" text-anchor="middle" font-size="8.5" fill="#333">Is it internal or external?</text>
+        <text x="130" y="94" text-anchor="middle" font-size="8.5" fill="#333">Is it in the asset inventory?</text>
+        <text x="130" y="108" text-anchor="middle" font-size="8.5" fill="#333">What time did this happen?</text>
+
+        <line x1="250" y1="75" x2="288" y2="75" stroke="#CC5500" stroke-width="2" marker-end="url(#s1)"/>
+
+        <rect x="288" y="20" width="240" height="110" rx="8" fill="#eef5fb" stroke="#3a7fc1" stroke-width="2"/>
+        <text x="408" y="48" text-anchor="middle" font-size="11" font-weight="700" fill="#3a7fc1">Step 2: Scope</text>
+        <text x="408" y="66" text-anchor="middle" font-size="8.5" fill="#333">What other logs mention this IP?</text>
+        <text x="408" y="80" text-anchor="middle" font-size="8.5" fill="#333">What time window is affected?</text>
+        <text x="408" y="94" text-anchor="middle" font-size="8.5" fill="#333">What other hosts were involved?</text>
+        <text x="408" y="108" text-anchor="middle" font-size="8.5" fill="#333">Did anything succeed?</text>
+
+        <line x1="528" y1="75" x2="566" y2="75" stroke="#3a7fc1" stroke-width="2" marker-end="url(#s2)"/>
+
+        <rect x="566" y="20" width="244" height="110" rx="8" fill="#f0faf0" stroke="#3aaa3a" stroke-width="2"/>
+        <text x="688" y="48" text-anchor="middle" font-size="11" font-weight="700" fill="#2a8a2a">Step 3: Act</text>
+        <text x="688" y="66" text-anchor="middle" font-size="8.5" fill="#333">Block the source if confirmed</text>
+        <text x="688" y="80" text-anchor="middle" font-size="8.5" fill="#333">Isolate affected host if needed</text>
+        <text x="688" y="94" text-anchor="middle" font-size="8.5" fill="#333">Open/update the ticket</text>
+        <text x="688" y="108" text-anchor="middle" font-size="8.5" fill="#333">Document findings and timeline</text>
+
+        <defs>
+          <marker id="s1" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#CC5500"/></marker>
+          <marker id="s2" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#3a7fc1"/></marker>
+        </defs>
+      </svg>
+      <div class="diagram-caption">Orient, Scope, Act. Apply this every time before touching any tool or escalating any alert.</div>
+    </div>
+
+    <div class="callout callout-ir">
+      <div class="callout-title">Incident Response: Correlating Across Tools</div>
+      The power comes from using all three tools together. Wazuh fires an SSH brute-force alert at level 10. You go to Sophos flow logs and filter by that source IP to see what other connections it made. You find it also made HTTPS connections to two internal servers. You check SafeLine WAF logs for that same IP and find ten blocked SQLi attempts an hour earlier. Now you have the full picture: recon via web scanning, attempted SQL injection, pivot to SSH brute force. One ticket, three data sources, complete picture.
+    </div>
+  </div>
+
+  <div class="takeaways">
+    <h2>Key Takeaways</h2>
+    <ul>
+      <li>Every log line has five universal components: timestamp, hostname, severity, process, and message. Extract these first on any unfamiliar log.</li>
+      <li>The four formats you will encounter are syslog (Unix/Linux), JSON (Wazuh alerts), CEF (SIEM integrations), and key=value (Sophos). Each is parseable with a simple mental rule.</li>
+      <li>The six attack patterns to recognise: brute force (repeated failures same source), directory scan (many 404s same source), port scan (many ports same target), exfiltration (large sent_bytes to unknown external), C2 beaconing (periodic DNS queries same interval), lateral movement (one source authenticating to many internal hosts).</li>
+      <li>Sophos, Wazuh and SafeLine report the same events with different field names. The field mapping table in this chapter lets you translate between them.</li>
+      <li>Always Orient (who, where, when), then Scope (what else happened), then Act (block, isolate, document). Never skip straight to acting on the first alert you see.</li>
+    </ul>
+  </div>
+
+</main>
+
+<nav class="chapter-nav" style="margin-top:0;">
+  <a class="nav-home" href="index.html">Home</a>
+  <a href="07-http-becomes-https.html">&larr; Chapter 06</a>
+  <span class="chapter-nav-spacer"></span>
+  <a href="09-packets-to-evidence.html">Next: From Packets to Evidence &rarr;</a>
+</nav>
+
+</body>
+</html>

@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 02 - Following the Flow | Shef Labs</title>
+  <link rel="stylesheet" href="../../style.css" />
+  <style>
+    .osi-badge { display:inline-block; padding:2px 9px; border-radius:12px; font-size:0.72rem; font-weight:700; margin-right:6px; vertical-align:middle; }
+    .osi-l2 { background:#e8f5e9; color:#1a5a1a; border:1px solid #2a7a2a; }
+    .osi-l3 { background:#e3f2fd; color:#1a3a6a; border:1px solid #1a5fa1; }
+    .osi-l4 { background:#fff3e0; color:#8a3000; border:1px solid #b34000; }
+    .osi-l7 { background:#fce4ec; color:#8a0000; border:1px solid #d63b3b; }
+  </style>
+</head>
+<body>
+<header class="site-header">
+  <a class="logo" href="../../index.html">
+    <div class="logo-mark"><img src="../../SLCA.png" alt="SLCA" style="width:100%;height:100%;object-fit:contain;" /></div>
+    <div><div class="logo-text">Shef<span>Labs</span></div><div class="header-subtitle">Cyber Academy</div></div>
+  </a>
+  <div style="font-size:0.85rem;color:#888;">Packet Forensics and Network Telemetry</div>
+</header>
+
+<nav class="chapter-nav">
+  <a class="nav-home" href="index.html">Home</a>
+  <a href="01-life-of-a-packet.html">&larr; Chapter 01</a>
+  <span class="chapter-nav-spacer"></span>
+  <span class="chapter-label">Chapter 02 of 18</span>
+  <a href="03-the-tcp-conversation.html">Next: TCP Conversation &rarr;</a>
+</nav>
+
+<main class="page-wrapper">
+
+  <div class="chapter-header">
+    <div class="chapter-number">Chapter 02</div>
+    <h1>Following the Flow</h1>
+    <div class="chapter-tagline">How a packet actually gets from your laptop to a web server across the internet. MAC addresses, IP addresses, ARP, DNS, gateways, and routing - explained step by step with every field labelled.</div>
+  </div>
+
+  <div class="objectives-box">
+    <h3>Learning Objectives</h3>
+    <ul>
+      <li>Explain the difference between a MAC address and an IP address and why both are needed</li>
+      <li>Describe what ARP does and why it is necessary</li>
+      <li>Explain how DNS translates a domain name into an IP address</li>
+      <li>Trace the journey of a packet from a browser to a web server, naming every step</li>
+      <li>Read a Sophos firewall flow log entry and identify every field</li>
+      <li>Read a Wazuh network event alert and identify every field</li>
+      <li>Identify the OSI layer each protocol operates at and explain why that matters for detection</li>
+    </ul>
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="section">
+    <h2>Two Types of Address: MAC vs IP</h2>
+    <p>Before we can trace the journey of a packet, we need to understand that every packet carries two completely different types of address, and each one serves a different purpose.</p>
+
+    <h3><span class="osi-badge osi-l2">Layer 2</span> MAC Addresses - For Local Delivery</h3>
+    <p>A <strong>MAC address</strong> (Media Access Control address, also called hardware address or Ethernet address) is a 48-bit identifier burned into every network card at the factory. It looks like this: <code>00:1A:2B:3C:4D:5E</code>. The first three pairs of characters (the OUI, Organisationally Unique Identifier) identify the manufacturer. The last three pairs are a unique serial number.</p>
+
+    <p>MAC addresses operate at <strong>Layer 2 (Data Link)</strong>. They are only meaningful on your local network segment. When a packet leaves your local network and crosses a router, the Ethernet frame (and its MAC address) is stripped off and a new one is created for the next segment. By the time a packet from your laptop reaches a web server in another country, the original MAC address you sent it with is long gone.</p>
+
+    <p><strong>Why this matters for an analyst:</strong> MAC addresses in logs tell you which physical device on your local network sent traffic. An attacker who forges a MAC address (MAC spoofing) can bypass MAC-based access controls. An attacker who sends forged ARP replies (ARP spoofing, covered below) can misdirect local traffic at Layer 2 in a way that Sophos firewall (which operates at Layer 3) cannot see.</p>
+
+    <h3><span class="osi-badge osi-l3">Layer 3</span> IP Addresses - For Internet-Wide Routing</h3>
+    <p>An <strong>IP address</strong> is a logical address assigned to a device by a network administrator or DHCP server. It is not burned into hardware and can be changed. An IPv4 address looks like: <code>192.168.1.45</code>. It is 32 bits, written as four decimal numbers (octets) separated by dots, each between 0 and 255.</p>
+
+    <p>IP addresses operate at <strong>Layer 3 (Network)</strong>. Unlike MAC addresses, they survive the entire journey across the internet. Routers use the destination IP address to decide where to forward each packet. The source IP address is the ultimate origin of the communication and is the primary identifier in firewall logs, Wazuh alerts, and SafeLine WAF blocks.</p>
+
+    <table class="field-table">
+      <thead><tr><th>Property</th><th>MAC Address</th><th>IP Address</th></tr></thead>
+      <tbody>
+        <tr><td>OSI Layer</td><td>Layer 2 (Data Link)</td><td>Layer 3 (Network)</td></tr>
+        <tr><td>Format</td><td>6 bytes, hex: 00:1A:2B:3C:4D:5E</td><td>4 bytes, decimal: 192.168.1.45</td></tr>
+        <tr><td>Assigned by</td><td>Manufacturer (burned in)</td><td>Network admin or DHCP</td></tr>
+        <tr><td>Scope</td><td>Local network segment only</td><td>Global (survives routing)</td></tr>
+        <tr><td>Changes at routers?</td><td>Yes - stripped and recreated</td><td>No - preserved end-to-end</td></tr>
+        <tr><td>Can be spoofed?</td><td>Yes (software can change MAC)</td><td>Yes (IP spoofing)</td></tr>
+        <tr><td>In Sophos logs?</td><td>Not typically in IP logs</td><td>Yes - srcip, dstip fields</td></tr>
+        <tr><td>In Wazuh alerts?</td><td>Only in ARP/FIM alerts</td><td>Yes - src_ip, dst_ip fields</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="section">
+    <h2><span class="osi-badge osi-l2">Layer 2</span> ARP: How MAC Meets IP</h2>
+    <p>Here is the problem: your computer needs to send a packet to an IP address on your local network. But Ethernet delivers frames using MAC addresses, not IP addresses. So how does your computer find out which MAC address belongs to the IP address it wants to reach?</p>
+
+    <p>The answer is <strong>ARP</strong> (Address Resolution Protocol). ARP is a simple question-and-answer protocol. Your computer broadcasts the question "Who has IP address X?" to every device on the local network. The device that owns that IP address replies with "I have it, and my MAC address is Y." Your computer then caches this mapping so it does not have to ask again for a few minutes.</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">ARP: How MAC Addresses Are Resolved from IP Addresses</div>
+      <svg viewBox="0 0 820 240" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <!-- Devices -->
+        <rect x="20" y="80" width="110" height="70" rx="8" fill="#e3f2fd" stroke="#1a5fa1" stroke-width="2"/>
+        <text x="75" y="110" text-anchor="middle" font-size="9" font-weight="700" fill="#1a3a6a">Your Laptop</text>
+        <text x="75" y="124" text-anchor="middle" font-size="8" fill="#555">IP: 10.0.0.5</text>
+        <text x="75" y="136" text-anchor="middle" font-size="8" fill="#555">MAC: AA:BB:CC:DD:EE:FF</text>
+
+        <rect x="360" y="20" width="110" height="50" rx="8" fill="#f5f5f5" stroke="#888" stroke-width="1"/>
+        <text x="415" y="44" text-anchor="middle" font-size="9" fill="#666">Printer</text>
+        <text x="415" y="57" text-anchor="middle" font-size="8" fill="#888">IP: 10.0.0.8</text>
+
+        <rect x="360" y="100" width="110" height="50" rx="8" fill="#f5f5f5" stroke="#888" stroke-width="1"/>
+        <text x="415" y="124" text-anchor="middle" font-size="9" fill="#666">Phone</text>
+        <text x="415" y="137" text-anchor="middle" font-size="8" fill="#888">IP: 10.0.0.11</text>
+
+        <rect x="360" y="180" width="110" height="50" rx="8" fill="#e8f5e9" stroke="#2a7a2a" stroke-width="2"/>
+        <text x="415" y="204" text-anchor="middle" font-size="9" font-weight="700" fill="#1a5a1a">Gateway</text>
+        <text x="415" y="217" text-anchor="middle" font-size="8" fill="#555">IP: 10.0.0.1</text>
+        <text x="415" y="228" text-anchor="middle" font-size="8" fill="#555">MAC: 11:22:33:44:55:66</text>
+
+        <!-- Broadcast arrow (to everyone) -->
+        <line x1="130" y1="115" x2="358" y2="45" stroke="#d63b3b" stroke-width="1.5" stroke-dasharray="5"/>
+        <line x1="130" y1="115" x2="358" y2="125" stroke="#d63b3b" stroke-width="1.5" stroke-dasharray="5"/>
+        <line x1="130" y1="115" x2="358" y2="205" stroke="#d63b3b" stroke-width="2"/>
+        <polygon points="353,200 363,205 353,210" fill="#d63b3b"/>
+
+        <!-- Broadcast label -->
+        <rect x="155" y="140" width="185" height="38" rx="4" fill="#fce4ec" stroke="#d63b3b" stroke-width="1"/>
+        <text x="247" y="155" text-anchor="middle" font-size="8" font-weight="700" fill="#d63b3b">ARP Request (broadcast)</text>
+        <text x="247" y="168" text-anchor="middle" font-size="7.5" fill="#555">"Who has 10.0.0.1? Tell 10.0.0.5"</text>
+        <text x="247" y="179" text-anchor="middle" font-size="7" fill="#888">Sent to FF:FF:FF:FF:FF:FF (all devices)</text>
+
+        <!-- Reply arrow (unicast from gateway) -->
+        <line x1="360" y1="205" x2="132" y2="125" stroke="#2a7a2a" stroke-width="2"/>
+        <polygon points="136,122 127,130 134,135" fill="#2a7a2a"/>
+
+        <!-- Reply label -->
+        <rect x="610" y="150" width="200" height="50" rx="4" fill="#e8f5e9" stroke="#2a7a2a" stroke-width="1"/>
+        <text x="710" y="166" text-anchor="middle" font-size="8" font-weight="700" fill="#2a7a2a">ARP Reply (unicast)</text>
+        <text x="710" y="179" text-anchor="middle" font-size="7.5" fill="#555">"10.0.0.1 is at 11:22:33:44:55:66"</text>
+        <text x="710" y="191" text-anchor="middle" font-size="7" fill="#888">Sent only to the requesting device</text>
+
+        <!-- Laptop cache note -->
+        <rect x="20" y="165" width="200" height="30" rx="4" fill="#fffbf0" stroke="#d4a000" stroke-width="1"/>
+        <text x="120" y="178" text-anchor="middle" font-size="7.5" font-weight="700" fill="#8a6a00">ARP Cache Updated</text>
+        <text x="120" y="190" text-anchor="middle" font-size="7" fill="#555">10.0.0.1 = 11:22:33:44:55:66 (TTL: ~4 min)</text>
+
+        <!-- OSI label -->
+        <rect x="695" y="20" width="120" height="40" rx="4" fill="#e8f5e9" stroke="#2a7a2a" stroke-width="1.5"/>
+        <text x="755" y="36" text-anchor="middle" font-size="8.5" font-weight="700" fill="#1a5a1a">OSI Layer 2</text>
+        <text x="755" y="50" text-anchor="middle" font-size="7.5" fill="#555">Data Link Protocol</text>
+
+      </svg>
+      <div class="diagram-caption">The ARP broadcast goes to every device on the local network (destination MAC FF:FF:FF:FF:FF:FF means "everyone"). Only the device that owns the queried IP replies. The reply goes only to the requester. Your computer caches the result to avoid asking again every time.</div>
+    </div>
+
+    <h3>ARP Spoofing: Why Layer 2 Matters for Attackers</h3>
+    <p>ARP has no authentication. Any device on the network can send an ARP reply claiming any IP address. An attacker running Bettercap can continuously broadcast fake ARP replies saying "10.0.0.1 (the gateway) is at MY MAC address". Every device on the network updates its ARP cache with the wrong mapping. Now all traffic intended for the gateway flows to the attacker first. This is a <strong>Layer 2 attack</strong> and is invisible to Sophos firewall because Sophos operates at Layer 3 and never processes raw ARP frames.</p>
+
+    <p>Wireshark will show you duplicate ARP replies with conflicting MAC addresses. Chapter 16 covers this in full with lab evidence from Bettercap.</p>
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="section">
+    <h2><span class="osi-badge osi-l7">Layer 7</span> DNS: Translating Names to Addresses</h2>
+    <p>Humans remember names like <code>www.bank.com</code>. Routers route by IP address. <strong>DNS</strong> (Domain Name System) is the global phonebook that translates one into the other.</p>
+
+    <p>DNS is technically a Layer 7 (Application) protocol, but it uses UDP at Layer 4 (port 53). DNS queries happen before any other network activity - you cannot connect to a web server until you know its IP address.</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">DNS Resolution: Turning a Name into an IP Address</div>
+      <svg viewBox="0 0 820 180" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <!-- Devices -->
+        <rect x="10" y="60" width="100" height="60" rx="8" fill="#e3f2fd" stroke="#1a5fa1" stroke-width="2"/>
+        <text x="60" y="86" text-anchor="middle" font-size="9" font-weight="700" fill="#1a3a6a">Your Browser</text>
+        <text x="60" y="100" text-anchor="middle" font-size="8" fill="#555">Types:</text>
+        <text x="60" y="112" text-anchor="middle" font-size="8" fill="#1a5fa1">www.bank.com</text>
+
+        <rect x="175" y="60" width="110" height="60" rx="8" fill="#fff3e0" stroke="#b34000" stroke-width="2"/>
+        <text x="230" y="84" text-anchor="middle" font-size="9" font-weight="700" fill="#8a3000">Recursive</text>
+        <text x="230" y="97" text-anchor="middle" font-size="9" font-weight="700" fill="#8a3000">Resolver</text>
+        <text x="230" y="112" text-anchor="middle" font-size="8" fill="#555">(your ISP or 8.8.8.8)</text>
+
+        <rect x="350" y="20" width="100" height="50" rx="8" fill="#f5f5f5" stroke="#888" stroke-width="1.5"/>
+        <text x="400" y="42" text-anchor="middle" font-size="9" fill="#555">Root Name</text>
+        <text x="400" y="55" text-anchor="middle" font-size="9" fill="#555">Server</text>
+        <text x="400" y="65" text-anchor="middle" font-size="7" fill="#888">(13 worldwide)</text>
+
+        <rect x="350" y="100" width="100" height="50" rx="8" fill="#f5f5f5" stroke="#888" stroke-width="1.5"/>
+        <text x="400" y="122" text-anchor="middle" font-size="9" fill="#555">.com TLD</text>
+        <text x="400" y="135" text-anchor="middle" font-size="9" fill="#555">Name Server</text>
+
+        <rect x="530" y="60" width="110" height="60" rx="8" fill="#fce4ec" stroke="#d63b3b" stroke-width="2"/>
+        <text x="585" y="84" text-anchor="middle" font-size="9" font-weight="700" fill="#b71c1c">Authoritative</text>
+        <text x="585" y="97" text-anchor="middle" font-size="9" font-weight="700" fill="#b71c1c">NS for bank.com</text>
+        <text x="585" y="112" text-anchor="middle" font-size="8" fill="#555">(run by bank.com)</text>
+
+        <rect x="710" y="60" width="100" height="60" rx="8" fill="#e8f5e9" stroke="#2a7a2a" stroke-width="2"/>
+        <text x="760" y="84" text-anchor="middle" font-size="9" font-weight="700" fill="#1a5a1a">Answer</text>
+        <text x="760" y="98" text-anchor="middle" font-size="8.5" fill="#1a5fa1">185.60.216.35</text>
+        <text x="760" y="110" text-anchor="middle" font-size="7.5" fill="#555">(www.bank.com)</text>
+        <text x="760" y="122" text-anchor="middle" font-size="7" fill="#888">TTL: 300s</text>
+
+        <!-- Step arrows -->
+        <line x1="110" y1="90" x2="173" y2="90" stroke="#1a5fa1" stroke-width="1.5" marker-end="url(#arr1)"/>
+        <text x="140" y="85" text-anchor="middle" font-size="7" fill="#1a5fa1">1. Query</text>
+
+        <line x1="285" y1="75" x2="348" y2="50" stroke="#888" stroke-width="1" stroke-dasharray="3" marker-end="url(#arr2)"/>
+        <text x="310" y="58" text-anchor="middle" font-size="7" fill="#888">2. Root</text>
+
+        <line x1="285" y1="105" x2="348" y2="125" stroke="#888" stroke-width="1" stroke-dasharray="3" marker-end="url(#arr2)"/>
+        <text x="310" y="122" text-anchor="middle" font-size="7" fill="#888">3. TLD</text>
+
+        <line x1="450" y1="90" x2="528" y2="90" stroke="#888" stroke-width="1" stroke-dasharray="3" marker-end="url(#arr2)"/>
+        <text x="490" y="85" text-anchor="middle" font-size="7" fill="#888">4. Auth NS</text>
+
+        <line x1="640" y1="90" x2="708" y2="90" stroke="#2a7a2a" stroke-width="1.5" marker-end="url(#arr3)"/>
+        <text x="675" y="85" text-anchor="middle" font-size="7" fill="#2a7a2a">5. Answer</text>
+
+        <defs>
+          <marker id="arr1" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#1a5fa1"/></marker>
+          <marker id="arr2" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#888"/></marker>
+          <marker id="arr3" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#2a7a2a"/></marker>
+        </defs>
+
+        <!-- OSI badge -->
+        <rect x="0" y="152" width="820" height="22" rx="3" fill="#fce4ec" stroke="#d63b3b" stroke-width="1"/>
+        <text x="10" y="167" font-size="8" font-weight="700" fill="#b71c1c">OSI Layer 7 (Application) using UDP at Layer 4, Port 53.</text>
+        <text x="200" y="167" font-size="8" fill="#555">DNS is the first thing that happens before any other network activity. Every web request starts with a DNS query.</text>
+      </svg>
+      <div class="diagram-caption">A full DNS resolution. Steps 2-4 happen inside the recursive resolver - the resolver caches the answer so most queries skip steps 2-4 entirely. The TTL (Time to Live) field tells the resolver how many seconds to cache the answer before asking again.</div>
+    </div>
+
+    <h3>DNS Log Fields - Wazuh Example</h3>
+    <p>DNS queries appear in Wazuh as events decoded from the Sophos firewall's DNS log or from a DNS server agent. Here is what a DNS query event looks like with every field explained:</p>
+
+    <div class="log-label">Wazuh DNS Event - Normal Query (JSON format)</div>
+    <div class="log-block">{
+  "timestamp": "<span class="log-val">2026-09-20T10:22:14.412Z</span>",   <span class="log-comment">/* when the query happened (UTC) */</span>
+  "rule": {
+    "id": "<span class="log-val">86601</span>",                             <span class="log-comment">/* Wazuh rule number - 86xxx = DNS events */</span>
+    "description": "<span class="log-hl">DNS query</span>",
+    "level": "<span class="log-val">3</span>"                              <span class="log-comment">/* level 3 = informational, not a threat */</span>
+  },
+  "agent": {
+    "name": "<span class="log-val">sophos-firewall</span>"                 <span class="log-comment">/* which device produced this log */</span>
+  },
+  "data": {
+    "srcip": "<span class="log-hl">10.0.2.5</span>",                       <span class="log-comment">/* which internal device made the query */</span>
+    "query": "<span class="log-hl">www.bank.com</span>",                  <span class="log-comment">/* the name being looked up */</span>
+    "query_type": "<span class="log-val">A</span>",                        <span class="log-comment">/* A = IPv4 address lookup. AAAA = IPv6. MX = mail server */</span>
+    "answer": "<span class="log-val">185.60.216.35</span>",               <span class="log-comment">/* the IP address returned */</span>
+    "response_code": "<span class="log-val">NOERROR</span>",              <span class="log-comment">/* success. NXDOMAIN = domain does not exist */</span>
+    "ttl": "<span class="log-val">300</span>"                            <span class="log-comment">/* cache for 300 seconds before asking again */</span>
+  }
+}</div>
+
+    <div class="callout callout-info">
+      <div class="callout-title">Why DNS Logs Matter to an Analyst</div>
+      Malware often uses DNS to find its command-and-control server. A compromised host calling out to a newly registered domain, a domain with many random characters (DGA - Domain Generation Algorithm), or a domain on a threat intelligence blocklist is a major indicator of compromise. Wazuh can correlate DNS queries against threat feeds and fire alerts when a match is found.
+    </div>
+
+    <h3>Suspicious DNS Patterns to Watch For</h3>
+    <table class="field-table">
+      <thead><tr><th>Pattern</th><th>What it looks like in DNS logs</th><th>What it suggests</th></tr></thead>
+      <tbody>
+        <tr><td>Mass NXDOMAIN responses</td><td>Hundreds of NXDOMAIN (domain not found) responses from one host in a short time</td><td>DGA malware cycling through generated domain names looking for its C2 server</td></tr>
+        <tr><td>Long domain names</td><td>query field: aB3xQr7mNp2kLsY4tV.c2server.ru</td><td>Data exfiltration over DNS - encoding stolen data in subdomains</td></tr>
+        <tr><td>Unusual query types</td><td>query_type: TXT repeatedly from same host</td><td>DNS tunnelling - using TXT records to transfer data out of the network</td></tr>
+        <tr><td>Queries to unexpected DNS servers</td><td>dstip is not the corporate DNS server</td><td>Host bypassing DNS filtering controls by using an external resolver</td></tr>
+        <tr><td>Very low TTL values</td><td>ttl: 0 or ttl: 1</td><td>Fast-flux C2 infrastructure - IP changes every few seconds to avoid blocklisting</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="section">
+    <h2>Ports: Which Service Gets the Packet</h2>
+    <p>An IP address identifies a <em>device</em>. But a single device runs many services simultaneously. <strong>Port numbers</strong> at <span class="osi-badge osi-l4">Layer 4</span> identify which <em>service</em> on that device should receive the packet.</p>
+
+    <p>Think of it like an office building. The IP address is the building address. The port number is the room number. You cannot just send a letter to the building - you need to know which room it is going to.</p>
+
+    <table class="field-table">
+      <thead><tr><th>Port</th><th>Protocol</th><th>Service</th><th>Normal value in logs</th><th>Suspicious when...</th></tr></thead>
+      <tbody>
+        <tr><td>22</td><td>TCP</td><td>SSH (secure shell remote access)</td><td>dstport: 22 from admin IPs only</td><td>Connections from external/unexpected IPs, many in rapid succession</td></tr>
+        <tr><td>23</td><td>TCP</td><td>Telnet (insecure remote access)</td><td>Should never appear in modern networks</td><td>Any Telnet traffic is suspicious - protocol sends credentials in plain text</td></tr>
+        <tr><td>25</td><td>TCP</td><td>SMTP (email sending)</td><td>Only from mail servers</td><td>Internal workstations sending to port 25 externally = spam bot or data exfil</td></tr>
+        <tr><td>53</td><td>UDP/TCP</td><td>DNS (name resolution)</td><td>Queries to corporate DNS only</td><td>Queries to external IPs, unusually large payloads, TXT/NULL query types</td></tr>
+        <tr><td>80</td><td>TCP</td><td>HTTP (unencrypted web)</td><td>Normal web traffic</td><td>Credentials in POST body, connection to unusual external IPs</td></tr>
+        <tr><td>443</td><td>TCP</td><td>HTTPS (encrypted web)</td><td>Normal web traffic</td><td>No TLS handshake (HTTPS stripping), unusual SNI hostname</td></tr>
+        <tr><td>3389</td><td>TCP</td><td>RDP (Windows Remote Desktop)</td><td>Only from admin IPs</td><td>External connections, many failed logins, lateral movement between hosts</td></tr>
+        <tr><td>4444</td><td>TCP</td><td>Default Metasploit listener</td><td>Should never appear</td><td>Any traffic to/from port 4444 is a major red flag - common reverse shell port</td></tr>
+        <tr><td>8080</td><td>TCP</td><td>Alternate HTTP / proxy</td><td>Internal proxy servers</td><td>Unexpected hosts listening on 8080, often used by malware as C2</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="section">
+    <h2>The Gateway: Your Exit from the Local Network</h2>
+    <p>Every device on your local network has a <strong>default gateway</strong> configured. The gateway is the router that connects your local network to the internet (and to other networks). When your computer needs to send a packet to an IP address that is not on your local network, it sends the packet to the gateway first, and the gateway forwards it onwards.</p>
+
+    <p>In a home or office network, the gateway is typically your router. In a corporate network, the gateway is the Sophos firewall. This is why <strong>all internet traffic flows through Sophos</strong> - it is positioned as the gateway, and therefore every packet to or from the internet must pass through it.</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">Full Packet Journey: Browser to Web Server</div>
+      <svg viewBox="0 0 820 260" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <!-- Step 1: Browser -->
+        <rect x="5" y="80" width="100" height="80" rx="8" fill="#e3f2fd" stroke="#1a5fa1" stroke-width="2"/>
+        <text x="55" y="102" text-anchor="middle" font-size="9" font-weight="700" fill="#1a3a6a">1. Browser</text>
+        <text x="55" y="116" text-anchor="middle" font-size="8" fill="#555">Sends HTTP GET</text>
+        <text x="55" y="128" text-anchor="middle" font-size="8" fill="#555">to 185.60.216.35</text>
+        <text x="55" y="140" text-anchor="middle" font-size="8" fill="#555">port 443</text>
+        <text x="55" y="152" text-anchor="middle" font-size="8" fill="#1a5fa1">L7 - Application</text>
+
+        <!-- Arrow 1 -->
+        <line x1="105" y1="120" x2="148" y2="120" stroke="#555" stroke-width="1.5" marker-end="url(#ga1)"/>
+        <text x="126" y="112" text-anchor="middle" font-size="7" fill="#888">packet</text>
+
+        <!-- Step 2: ARP -->
+        <rect x="150" y="60" width="100" height="40" rx="6" fill="#e8f5e9" stroke="#2a7a2a" stroke-width="1.5"/>
+        <text x="200" y="76" text-anchor="middle" font-size="8.5" font-weight="700" fill="#1a5a1a">2. ARP Lookup</text>
+        <text x="200" y="90" text-anchor="middle" font-size="7.5" fill="#555">Who has 10.0.0.1?</text>
+        <line x1="200" y1="100" x2="200" y2="118" stroke="#2a7a2a" stroke-width="1.5" stroke-dasharray="4"/>
+
+        <rect x="150" y="120" width="100" height="60" rx="6" fill="#e8f5e9" stroke="#2a7a2a" stroke-width="1.5"/>
+        <text x="200" y="138" text-anchor="middle" font-size="8" font-weight="700" fill="#1a5a1a">Ethernet Frame</text>
+        <text x="200" y="150" text-anchor="middle" font-size="7.5" fill="#555">Dst MAC: 11:22:33...</text>
+        <text x="200" y="162" text-anchor="middle" font-size="7.5" fill="#555">Src MAC: AA:BB:CC...</text>
+        <text x="200" y="174" text-anchor="middle" font-size="7.5" fill="#888">L2 - Data Link</text>
+
+        <!-- Arrow 2 -->
+        <line x1="250" y1="150" x2="293" y2="150" stroke="#555" stroke-width="1.5" marker-end="url(#ga1)"/>
+
+        <!-- Step 3: Sophos Firewall -->
+        <rect x="295" y="100" width="120" height="100" rx="8" fill="#fff3e8" stroke="#CC5500" stroke-width="2"/>
+        <text x="355" y="122" text-anchor="middle" font-size="9" font-weight="700" fill="#CC5500">3. Sophos</text>
+        <text x="355" y="135" text-anchor="middle" font-size="8" font-weight="700" fill="#CC5500">Firewall</text>
+        <text x="355" y="150" text-anchor="middle" font-size="7.5" fill="#555">Checks firewall policy</text>
+        <text x="355" y="162" text-anchor="middle" font-size="7.5" fill="#555">Runs IPS engine</text>
+        <text x="355" y="174" text-anchor="middle" font-size="7.5" fill="#555">Logs the flow</text>
+        <text x="355" y="188" text-anchor="middle" font-size="7.5" fill="#CC5500">L3/L4/L7</text>
+
+        <!-- Arrow 3 -->
+        <line x1="415" y1="150" x2="458" y2="150" stroke="#555" stroke-width="1.5" marker-end="url(#ga1)"/>
+        <text x="436" y="142" text-anchor="middle" font-size="7" fill="#888">if allowed</text>
+
+        <!-- Step 4: ISP -->
+        <rect x="460" y="120" width="90" height="60" rx="8" fill="#f5f5f5" stroke="#888" stroke-width="1.5"/>
+        <text x="505" y="143" text-anchor="middle" font-size="8.5" font-weight="700" fill="#555">4. Internet</text>
+        <text x="505" y="156" text-anchor="middle" font-size="7.5" fill="#888">Multiple routers</text>
+        <text x="505" y="168" text-anchor="middle" font-size="7.5" fill="#888">MACs change</text>
+        <text x="505" y="180" text-anchor="middle" font-size="7" fill="#888">IPs stay same</text>
+
+        <!-- Arrow 4 -->
+        <line x1="550" y1="150" x2="593" y2="150" stroke="#555" stroke-width="1.5" marker-end="url(#ga1)"/>
+
+        <!-- Step 5: Web server -->
+        <rect x="595" y="80" width="110" height="100" rx="8" fill="#fce4ec" stroke="#d63b3b" stroke-width="2"/>
+        <text x="650" y="104" text-anchor="middle" font-size="9" font-weight="700" fill="#b71c1c">5. Web Server</text>
+        <text x="650" y="118" text-anchor="middle" font-size="8" fill="#555">185.60.216.35</text>
+        <text x="650" y="132" text-anchor="middle" font-size="7.5" fill="#555">Decapsulates all layers</text>
+        <text x="650" y="144" text-anchor="middle" font-size="7.5" fill="#555">Receives HTTP GET</text>
+        <text x="650" y="158" text-anchor="middle" font-size="7.5" fill="#555">Processes request</text>
+        <text x="650" y="170" text-anchor="middle" font-size="7.5" fill="#d63b3b">L7 - Application</text>
+
+        <!-- Step 0: DNS -->
+        <rect x="150" y="5" width="460" height="38" rx="6" fill="#fff8e8" stroke="#d4a000" stroke-width="1.5"/>
+        <text x="380" y="20" text-anchor="middle" font-size="8.5" font-weight="700" fill="#8a6a00">Step 0 (happens first): DNS</text>
+        <text x="380" y="34" text-anchor="middle" font-size="7.5" fill="#555">Browser asks DNS resolver: "What is the IP of www.bank.com?" Gets back: 185.60.216.35. Then the packet journey above begins.</text>
+
+        <!-- Layer reference bar at bottom -->
+        <rect x="5" y="218" width="810" height="36" rx="4" fill="#f8f8f8" stroke="#ddd" stroke-width="1"/>
+        <text x="10" y="232" font-size="7.5" font-weight="700" fill="#333">Layer used at each step:</text>
+        <text x="10" y="248" font-size="7.5" fill="#555">Step 0: L7+L4 (DNS/UDP)</text>
+        <text x="145" y="248" font-size="7.5" fill="#555">Step 1: L7 (HTTP)</text>
+        <text x="255" y="248" font-size="7.5" fill="#555">Step 2: L2 (ARP+Ethernet)</text>
+        <text x="400" y="248" font-size="7.5" fill="#555">Step 3: L3+L4 (IP+TCP, Sophos policy)</text>
+        <text x="590" y="248" font-size="7.5" fill="#555">Step 4: L3 (IP routing)</text>
+        <text x="700" y="248" font-size="7.5" fill="#555">Step 5: L7 (HTTP)</text>
+
+        <defs>
+          <marker id="ga1" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#555"/></marker>
+        </defs>
+
+      </svg>
+      <div class="diagram-caption">The complete journey. DNS happens first (Step 0). ARP resolves the gateway MAC address (Step 2). Sophos inspects every packet at the boundary (Step 3). Routers forward the packet across the internet using the destination IP address only (Step 4). MAC addresses change at every router hop but IP addresses stay the same throughout.</div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="section">
+    <h2>Reading a Sophos Flow Log Entry</h2>
+    <p>Every packet that passes through Sophos generates a log entry. Here is a real Sophos firewall log line for an outbound HTTPS connection, with every field explained:</p>
+
+    <div class="log-label">Sophos Firewall Flow Log - Full Field Reference</div>
+    <div class="log-block">date=<span class="log-val">2026-09-20</span>                <span class="log-comment"># date of the event</span>
+time=<span class="log-val">10:22:14</span>                <span class="log-comment"># time of the event (local time on firewall)</span>
+device_name=<span class="log-val">SFW-HQ-01</span>         <span class="log-comment"># hostname of the Sophos appliance</span>
+log_id=<span class="log-val">010101600001</span>           <span class="log-comment"># unique log type identifier</span>
+log_type=<span class="log-val">Firewall</span>               <span class="log-comment"># type: Firewall, IPS, AppControl, WebFilter, SSL</span>
+log_component=<span class="log-val">Firewall Rule</span>     <span class="log-comment"># sub-component that generated this entry</span>
+log_subtype=<span class="log-val">Allowed</span>             <span class="log-comment"># Allowed or Denied</span>
+status=<span class="log-val">Allow</span>                   <span class="log-comment"># Allow or Deny</span>
+priority=<span class="log-val">6</span>                      <span class="log-comment"># syslog priority level (6 = informational)</span>
+duration=<span class="log-val">44</span>                     <span class="log-comment"># how long the connection lasted, in seconds</span>
+
+src_ip=<span class="log-hl">10.0.2.5</span>                  <span class="log-comment"># source IP: the device that initiated the connection</span>
+src_mac=<span class="log-hl">AA:BB:CC:DD:EE:FF</span>         <span class="log-comment"># source MAC: physical hardware address of the source</span>
+src_port=<span class="log-val">52341</span>                  <span class="log-comment"># source port: randomly chosen ephemeral port</span>
+src_zone=<span class="log-val">LAN</span>                    <span class="log-comment"># network zone the source is in</span>
+
+dst_ip=<span class="log-hl">185.60.216.35</span>             <span class="log-comment"># destination IP: the web server being contacted</span>
+dst_port=<span class="log-val">443</span>                    <span class="log-comment"># destination port: 443 = HTTPS</span>
+dst_zone=<span class="log-val">WAN</span>                    <span class="log-comment"># network zone the destination is in</span>
+
+protocol=<span class="log-val">TCP</span>                     <span class="log-comment"># transport protocol: TCP or UDP</span>
+fw_rule_id=<span class="log-val">12</span>                    <span class="log-comment"># which firewall policy rule made this Allow/Deny decision</span>
+
+sent_bytes=<span class="log-val">4215</span>                  <span class="log-comment"># bytes sent by source to destination</span>
+recv_bytes=<span class="log-val">98442</span>                 <span class="log-comment"># bytes received by source from destination</span>
+sent_pkts=<span class="log-val">48</span>                    <span class="log-comment"># packets sent</span>
+recv_pkts=<span class="log-val">312</span>                   <span class="log-comment"># packets received</span>
+
+user_name=<span class="log-val">john.smith</span>             <span class="log-comment"># authenticated user (if Sophos auth agent running)</span>
+application=<span class="log-val">HTTPS</span>               <span class="log-comment"># application identified by AppControl engine</span></div>
+
+    <div class="callout callout-ir">
+      <div class="callout-title">What to Look For in Flow Logs</div>
+      Normal outbound HTTPS: sent_bytes much lower than recv_bytes (you send a small request, receive a large page). If sent_bytes is much higher than recv_bytes, that is a data exfiltration indicator. A duration of hundreds of seconds with high sent_bytes to an unusual external IP should trigger an investigation.
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="section">
+    <h2>Reading a Wazuh Network Alert</h2>
+    <p>Wazuh receives the Sophos syslog and decodes it through its rule engine. Here is what a Wazuh alert looks like for a suspicious DNS query to a known malicious domain:</p>
+
+    <div class="log-label">Wazuh Alert - DNS Query to Threat Intelligence Hit</div>
+    <div class="log-block">{
+  "timestamp": "<span class="log-val">2026-09-20T10:44:02.887Z</span>",
+  "rule": {
+    "id": "<span class="log-hl">86603</span>",
+    "description": "<span class="log-hl">DNS query to known malicious domain</span>",
+    "level": "<span class="log-hl">12</span>",                   <span class="log-comment">/* level 12 = high severity - requires investigation */</span>
+    "groups": ["dns", "threat_intel", "malware"]
+  },
+  "agent": {
+    "id": "<span class="log-val">003</span>",
+    "name": "<span class="log-val">sophos-firewall</span>",
+    "ip": "<span class="log-val">10.0.0.1</span>"
+  },
+  "data": {
+    "srcip": "<span class="log-hl">10.0.2.55</span>",              <span class="log-comment">/* internal host making the query */</span>
+    "query": "<span class="log-hl">c2panel.xr7m3qa.xyz</span>",    <span class="log-comment">/* suspicious-looking domain */</span>
+    "query_type": "<span class="log-val">A</span>",
+    "answer": "<span class="log-val">185.220.101.45</span>",      <span class="log-comment">/* resolved IP - check against threat intel */</span>
+    "response_code": "<span class="log-val">NOERROR</span>",
+    "threat_feed_match": "<span class="log-hl">EmergingThreats - C2</span>" <span class="log-comment">/* matched a threat intelligence feed */</span>
+  },
+  "_source": {
+    "srcip": "10.0.2.55",
+    "location": "Sophos DNS Log",
+    "full_log": "date=2026-09-20 time=10:44:02 ... dns_query=c2panel.xr7m3qa.xyz ..."
+  }
+}</div>
+
+    <p>The key fields an analyst uses in triage are: <code>srcip</code> (which internal device is compromised), <code>query</code> (what domain it is calling), <code>threat_feed_match</code> (confirmation it is known malicious), and <code>timestamp</code> (when it started). These four fields answer the immediate questions: who, what, and when.</p>
+  </div>
+
+  <div class="takeaways">
+    <h2>Key Takeaways</h2>
+    <ul>
+      <li>MAC addresses (Layer 2) are for local delivery within a network segment. They change at every router hop. IP addresses (Layer 3) are for global routing and stay the same end-to-end.</li>
+      <li>ARP (Layer 2) maps IP addresses to MAC addresses on the local network. It has no authentication, which is why ARP spoofing works. Sophos cannot see ARP because it operates at Layer 3 and above.</li>
+      <li>DNS (Layer 7 over UDP port 53) translates domain names into IP addresses before any connection can be made. DNS logs reveal what external services a host is communicating with and can catch malware C2 beaconing.</li>
+      <li>Port numbers (Layer 4) identify which service on a device should receive a packet. Unusual port usage - especially inbound connections to ports that should never receive inbound traffic - is a major detection signal.</li>
+      <li>The default gateway is the first hop for all non-local traffic. Sophos firewall acts as the gateway, which means every internet-bound packet passes through it and is logged.</li>
+      <li>Sophos flow logs contain srcip, dstip, dstport, protocol, duration, sent_bytes, recv_bytes. An unusual ratio of sent to received bytes, especially to an external IP, is an exfiltration indicator.</li>
+    </ul>
+  </div>
+
+</main>
+
+<nav class="chapter-nav" style="margin-top:0;">
+  <a class="nav-home" href="index.html">Home</a>
+  <a href="01-life-of-a-packet.html">&larr; Chapter 01</a>
+  <span class="chapter-nav-spacer"></span>
+  <a href="03-the-tcp-conversation.html">Next: TCP Conversation &rarr;</a>
+</nav>
+</body>
+</html>

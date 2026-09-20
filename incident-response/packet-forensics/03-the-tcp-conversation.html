@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 03 - The TCP Conversation | Shef Labs</title>
+  <link rel="stylesheet" href="../../style.css" />
+  <style>
+    .osi-badge { display:inline-block; padding:2px 9px; border-radius:12px; font-size:0.72rem; font-weight:700; margin-right:6px; vertical-align:middle; }
+    .osi-l2 { background:#e8f5e9; color:#1a5a1a; border:1px solid #2a7a2a; }
+    .osi-l3 { background:#e3f2fd; color:#1a3a6a; border:1px solid #1a5fa1; }
+    .osi-l4 { background:#fff3e0; color:#8a3000; border:1px solid #b34000; }
+    .osi-l7 { background:#fce4ec; color:#8a0000; border:1px solid #d63b3b; }
+    .flag-on  { display:inline-block; padding:1px 6px; background:#d63b3b; color:#fff; border-radius:4px; font-size:0.75rem; font-weight:700; margin:0 2px; }
+    .flag-off { display:inline-block; padding:1px 6px; background:#e8e8e8; color:#888; border-radius:4px; font-size:0.75rem; font-weight:700; margin:0 2px; }
+  </style>
+</head>
+<body>
+<header class="site-header">
+  <a class="logo" href="../../index.html">
+    <div class="logo-mark"><img src="../../SLCA.png" alt="SLCA" style="width:100%;height:100%;object-fit:contain;" /></div>
+    <div><div class="logo-text">Shef<span>Labs</span></div><div class="header-subtitle">Cyber Academy</div></div>
+  </a>
+  <div style="font-size:0.85rem;color:#888;">Packet Forensics and Network Telemetry</div>
+</header>
+
+<nav class="chapter-nav">
+  <a class="nav-home" href="index.html">Home</a>
+  <a href="02-following-the-flow.html">&larr; Chapter 02</a>
+  <span class="chapter-nav-spacer"></span>
+  <span class="chapter-label">Chapter 03 of 18</span>
+  <a href="04-wireshark.html">Next: Wireshark &rarr;</a>
+</nav>
+
+<main class="page-wrapper">
+
+  <div class="chapter-header">
+    <div class="chapter-number">Chapter 03</div>
+    <h1>The TCP Conversation</h1>
+    <div class="chapter-tagline">OSI Layer 4 in depth. How TCP opens, maintains, and closes connections. Every flag explained. Sequence numbers, retransmissions, and the packet signatures of port scanning, SYN floods, and brute force attacks.</div>
+  </div>
+
+  <div class="objectives-box">
+    <h3>Learning Objectives</h3>
+    <ul>
+      <li>State that TCP operates at OSI Layer 4 (Transport) and explain what that means</li>
+      <li>Name the six TCP flags and describe what each one signals</li>
+      <li>Draw and explain the three-way handshake (SYN, SYN/ACK, ACK)</li>
+      <li>Explain what sequence numbers and acknowledgement numbers are and why they matter</li>
+      <li>Describe how TCP closes a connection cleanly (FIN) vs abruptly (RST)</li>
+      <li>Identify a SYN port scan, SYN flood, and SSH brute force from their TCP flag patterns</li>
+      <li>Read a Wazuh TCP connection alert and identify every field</li>
+      <li>Explain why TCP attacks are detectable by Sophos IPS and Wazuh but not by SafeLine WAF</li>
+    </ul>
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="section">
+    <h2><span class="osi-badge osi-l4">OSI Layer 4 - Transport</span> What TCP Does and Why It Exists</h2>
+
+    <p>In Chapter 02 we followed a packet from browser to web server. But we glossed over an important question: what happens if a packet gets lost on the way? The internet is not a guaranteed delivery service. Routers can drop packets when they are overloaded. Links can be unreliable. Packets can arrive out of order.</p>
+
+    <p><strong>TCP</strong> (Transmission Control Protocol) is the Layer 4 protocol that solves this problem. It sits above IP (Layer 3) and adds three capabilities that raw IP delivery does not have:</p>
+
+    <ul>
+      <li><strong>Reliability:</strong> TCP tracks every byte it sends. If the receiver does not acknowledge receipt within a timeout period, TCP automatically re-sends the missing data.</li>
+      <li><strong>Ordering:</strong> TCP numbers every byte with a sequence number. Even if packets arrive out of order, the receiver can sort them correctly.</li>
+      <li><strong>Flow control:</strong> TCP uses a window size to control how much data can be in flight at once, preventing a fast sender from overwhelming a slow receiver.</li>
+    </ul>
+
+    <p>The price of all this reliability is overhead. TCP requires a setup handshake before any data is sent, and a teardown sequence when the conversation ends. Every application that needs reliable delivery uses TCP: HTTP, HTTPS, SSH, SMTP, RDP, FTP. Applications that can tolerate some loss and need low latency use UDP instead: DNS queries, video streaming, VoIP.</p>
+
+    <h3>TCP vs UDP: Two Analogies</h3>
+
+    <p><strong>TCP is like sending a parcel by recorded delivery.</strong> When you hand it to the postal service, the clerk scans it and logs the transaction - both sides now agree the parcel has been accepted (this is the TCP handshake). The delivery person gets a signature from the recipient to confirm it arrived. If nobody answers the door, they try again. If the parcel goes missing, you can claim a replacement. You always know whether your item was delivered or not. That confirmation process takes extra time, but you get a guarantee.</p>
+
+    <p>TCP works the same way. Before any data flows, both computers agree to open a connection through the three-way handshake (covered in the next section). Every packet is acknowledged by the receiver. If an acknowledgement does not come back within a timeout, the sender retransmits. Nothing is permanently lost without the sender knowing. This is why every web page load, file download, and email uses TCP - losing part of the data would make the result useless.</p>
+
+    <p><strong>UDP is like delivering flyers through letterboxes.</strong> You print 1,000 flyers and walk down a street pushing them through letterboxes one after another. You do not ring the bell. You do not wait for a response. You do not know if anyone picked the flyer up, threw it away, or was even home. If a letterbox is blocked, you keep walking. You finish the street as fast as possible because speed is the point.</p>
+
+    <p>UDP works the same way. The sender pushes packets out with no handshake, no acknowledgement, and no retransmission. If a packet is lost it is gone. This is the right choice when speed matters more than perfection: a live video call cannot wait for a retransmitted frame from two seconds ago - a momentary pixel glitch is far less disruptive than a one-second freeze. DNS queries use UDP because a single tiny question-and-answer does not need the overhead of a full TCP connection setup.</p>
+
+    <table class="field-table">
+      <thead><tr><th>Property</th><th>TCP (recorded delivery)</th><th>UDP (flyer drop)</th></tr></thead>
+      <tbody>
+        <tr><td>Connection setup</td><td>Three-way handshake before any data</td><td>None - data sent immediately</td></tr>
+        <tr><td>Delivery guarantee</td><td>Yes - receiver sends acknowledgements</td><td>No - sender never finds out if data arrived</td></tr>
+        <tr><td>Retransmission</td><td>Yes - missing packets are re-sent</td><td>No - lost packets are gone</td></tr>
+        <tr><td>Ordering</td><td>Yes - sequence numbers ensure correct order</td><td>No - packets may arrive out of order</td></tr>
+        <tr><td>Speed</td><td>Slower - overhead of handshake and ACKs</td><td>Faster - no setup, no waiting for ACKs</td></tr>
+        <tr><td>Used by</td><td>HTTP, HTTPS, SSH, SMTP, FTP, RDP</td><td>DNS, DHCP, NTP, VoIP, live video, gaming</td></tr>
+        <tr><td>SYN flood attack possible?</td><td>Yes - TCP handshake is the attack surface</td><td>No - there is no handshake to abuse (UDP flood is a different attack)</td></tr>
+        <tr><td>Port scan detectable?</td><td>Yes - SYN packets without completing handshake</td><td>Different signatures apply</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-info">
+      <div class="callout-title">Why Layer 4 Matters for Security</div>
+      Because TCP requires a handshake before data flows, attackers can abuse this mechanism. A SYN flood sends millions of connection requests without ever completing the handshake, exhausting server resources. A port scanner sends SYN packets to probe which ports are open without completing connections. Both attacks are visible at Layer 4 and are detectable by Sophos IPS and Wazuh. SafeLine WAF (Layer 7) never sees these attacks because they operate below the application layer.
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="section">
+    <h2>TCP Flags: The Control Signals</h2>
+    <p>Every TCP packet contains a set of <strong>flags</strong> - single-bit fields in the TCP header that indicate the purpose of the packet. Think of flags as the subject line of an envelope: they tell the receiver what to do with the packet before it even opens it.</p>
+
+    <p>There are six primary TCP flags. Each is either ON (1) or OFF (0). In Wireshark, an active flag is shown in brackets: <code>[SYN]</code>, <code>[ACK]</code>, <code>[SYN, ACK]</code>, <code>[FIN, ACK]</code>, <code>[RST]</code>.</p>
+
+    <table class="field-table">
+      <thead>
+        <tr>
+          <th>Flag</th>
+          <th>Full Name</th>
+          <th>Meaning</th>
+          <th>Normal use</th>
+          <th>Suspicious when...</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="flag-on">SYN</span></td>
+          <td>Synchronise</td>
+          <td>Request to start a new connection. Includes the sender's initial sequence number.</td>
+          <td>First packet of every new TCP connection</td>
+          <td>Mass SYN packets to many ports = port scan. Mass SYN to one port = SYN flood DDoS</td>
+        </tr>
+        <tr>
+          <td><span class="flag-on">ACK</span></td>
+          <td>Acknowledgement</td>
+          <td>Confirms receipt of data. The acknowledgement number field says how many bytes have been received.</td>
+          <td>Almost every packet after the first SYN carries ACK</td>
+          <td>Missing ACKs after SYN/ACK responses = SYN scan in progress</td>
+        </tr>
+        <tr>
+          <td><span class="flag-on">FIN</span></td>
+          <td>Finish</td>
+          <td>Polite request to close the connection. Sender has no more data to send.</td>
+          <td>End of a normal connection after data transfer completes</td>
+          <td>Rapid FIN without prior data exchange = connection scanning or probing</td>
+        </tr>
+        <tr>
+          <td><span class="flag-on">RST</span></td>
+          <td>Reset</td>
+          <td>Abrupt termination. Connection is immediately closed, no cleanup.</td>
+          <td>Rejecting a connection to a closed port, or aborting a broken connection</td>
+          <td>Mass RST packets can indicate firewall drops, IDS interference, or TCP RST injection attack</td>
+        </tr>
+        <tr>
+          <td><span class="flag-on">PSH</span></td>
+          <td>Push</td>
+          <td>Tells receiver to deliver data to application immediately rather than buffering it.</td>
+          <td>Interactive sessions (SSH, Telnet) where each keystroke should go through immediately</td>
+          <td>Rarely suspicious alone, but PSH+URG combination is unusual</td>
+        </tr>
+        <tr>
+          <td><span class="flag-on">URG</span></td>
+          <td>Urgent</td>
+          <td>Urgent pointer field is valid - some data in this packet should be processed immediately.</td>
+          <td>Rarely used in modern protocols</td>
+          <td>URG flag set in normal web traffic is unusual and worth investigating</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">TCP Header: Where the Flags Live</div>
+      <svg viewBox="0 0 820 140" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <rect x="5" y="5" width="810" height="125" rx="5" fill="#1e1e1e" stroke="#444" stroke-width="1"/>
+
+        <!-- TCP Header fields -->
+        <rect x="10" y="12" width="200" height="30" rx="2" fill="#2a2a3a" stroke="#555"/>
+        <text x="110" y="24" text-anchor="middle" font-size="8" font-weight="700" fill="#9cdcfe">Source Port (16 bits)</text>
+        <text x="110" y="37" text-anchor="middle" font-size="7.5" fill="#888">e.g. 52341 (random ephemeral)</text>
+
+        <rect x="212" y="12" width="200" height="30" rx="2" fill="#2a2a3a" stroke="#555"/>
+        <text x="312" y="24" text-anchor="middle" font-size="8" font-weight="700" fill="#9cdcfe">Destination Port (16 bits)</text>
+        <text x="312" y="37" text-anchor="middle" font-size="7.5" fill="#888">e.g. 443 (HTTPS service)</text>
+
+        <rect x="414" y="12" width="400" height="30" rx="2" fill="#2a2a3a" stroke="#555"/>
+        <text x="614" y="24" text-anchor="middle" font-size="8" font-weight="700" fill="#9cdcfe">Sequence Number (32 bits)</text>
+        <text x="614" y="37" text-anchor="middle" font-size="7.5" fill="#888">byte counter - tracks position in data stream</text>
+
+        <rect x="10" y="44" width="400" height="30" rx="2" fill="#2a2a3a" stroke="#555"/>
+        <text x="210" y="56" text-anchor="middle" font-size="8" font-weight="700" fill="#9cdcfe">Acknowledgement Number (32 bits)</text>
+        <text x="210" y="69" text-anchor="middle" font-size="7.5" fill="#888">next byte expected from the other side</text>
+
+        <rect x="414" y="44" width="100" height="30" rx="2" fill="#2a2a3a" stroke="#555"/>
+        <text x="464" y="59" text-anchor="middle" font-size="8" font-weight="700" fill="#9cdcfe">Data Offset</text>
+
+        <rect x="516" y="44" width="298" height="30" rx="2" fill="#1a2a1a" stroke="#2a7a2a" stroke-width="1.5"/>
+        <text x="665" y="56" text-anchor="middle" font-size="8" font-weight="700" fill="#4ec9b0">FLAGS (6 bits)</text>
+        <text x="520" y="69" font-size="7.5" fill="#d63b3b">URG</text>
+        <text x="545" y="69" font-size="7.5" fill="#d63b3b">ACK</text>
+        <text x="570" y="69" font-size="7.5" fill="#d63b3b">PSH</text>
+        <text x="595" y="69" font-size="7.5" fill="#d63b3b">RST</text>
+        <text x="620" y="69" font-size="7.5" fill="#d63b3b">SYN</text>
+        <text x="645" y="69" font-size="7.5" fill="#d63b3b">FIN</text>
+        <text x="680" y="69" font-size="7" fill="#4ec9b0">-- attack signature</text>
+        <text x="680" y="78" font-size="7" fill="#4ec9b0">patterns come from</text>
+        <text x="680" y="87" font-size="7" fill="#4ec9b0">which flags are set</text>
+
+        <rect x="10" y="76" width="300" height="25" rx="2" fill="#2a2a3a" stroke="#555"/>
+        <text x="160" y="92" text-anchor="middle" font-size="8" font-weight="700" fill="#9cdcfe">Window Size (16 bits) - flow control</text>
+
+        <rect x="312" y="76" width="200" height="25" rx="2" fill="#2a2a3a" stroke="#555"/>
+        <text x="412" y="92" text-anchor="middle" font-size="8" font-weight="700" fill="#9cdcfe">Checksum (16 bits)</text>
+
+        <rect x="514" y="76" width="300" height="25" rx="2" fill="#2a2a3a" stroke="#555"/>
+        <text x="664" y="92" text-anchor="middle" font-size="8" font-weight="700" fill="#9cdcfe">Urgent Pointer (16 bits)</text>
+
+        <rect x="10" y="103" width="804" height="22" rx="2" fill="#1a1a2a" stroke="#555"/>
+        <text x="414" y="118" text-anchor="middle" font-size="8" fill="#888">Options (variable length) + Data payload (HTTP, SSH, TLS, or other application data)</text>
+
+      </svg>
+      <div class="diagram-caption">The TCP header is 20 bytes minimum. The flags field is the most important for security analysis. Wireshark shows which flags are set in the Info column of the packet list. The source and destination ports, sequence/ack numbers, and flags together tell you everything about what kind of packet this is.</div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="section">
+    <h2>The Three-Way Handshake</h2>
+    <p>Before any application data is exchanged, TCP requires both sides to agree to open a connection. This is the <strong>three-way handshake</strong>. It takes exactly three packets and establishes the connection parameters that both sides will use for the rest of the conversation.</p>
+
+    <p>The three steps are: <strong>SYN</strong> (client asks to connect), <strong>SYN/ACK</strong> (server agrees and asks back), <strong>ACK</strong> (client confirms). Only after these three packets have been exchanged can application data flow.</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">The TCP Three-Way Handshake - Every Field Explained</div>
+      <svg viewBox="0 0 820 340" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <!-- Column headers -->
+        <rect x="5" y="5" width="230" height="40" rx="5" fill="#e3f2fd" stroke="#1a5fa1" stroke-width="2"/>
+        <text x="120" y="22" text-anchor="middle" font-size="10" font-weight="700" fill="#1a3a6a">CLIENT</text>
+        <text x="120" y="37" text-anchor="middle" font-size="8" fill="#555">10.0.2.5 : 52341</text>
+
+        <rect x="585" y="5" width="230" height="40" rx="5" fill="#fce4ec" stroke="#d63b3b" stroke-width="2"/>
+        <text x="700" y="22" text-anchor="middle" font-size="10" font-weight="700" fill="#b71c1c">SERVER</text>
+        <text x="700" y="37" text-anchor="middle" font-size="8" fill="#555">185.60.216.35 : 443</text>
+
+        <!-- Vertical lifelines -->
+        <line x1="120" y1="45" x2="120" y2="335" stroke="#1a5fa1" stroke-width="1.5" stroke-dasharray="6,3"/>
+        <line x1="700" y1="45" x2="700" y2="335" stroke="#d63b3b" stroke-width="1.5" stroke-dasharray="6,3"/>
+
+        <!-- Step 1: SYN -->
+        <line x1="120" y1="80" x2="698" y2="130" stroke="#d63b3b" stroke-width="2" marker-end="url(#tcparr1)"/>
+        <rect x="270" y="58" width="280" height="55" rx="4" fill="#fff3e0" stroke="#b34000" stroke-width="1.5"/>
+        <text x="410" y="74" text-anchor="middle" font-size="9" font-weight="700" fill="#b34000">Packet 1: SYN</text>
+        <text x="410" y="87" text-anchor="middle" font-size="8" fill="#555">Flags: <span style="fill:#d63b3b">[SYN]</span></text>
+        <text x="410" y="99" text-anchor="middle" font-size="7.5" fill="#555">Seq=0 (client picks random start number)</text>
+        <text x="410" y="110" text-anchor="middle" font-size="7.5" fill="#888">"I want to connect. My first byte will be #0."</text>
+
+        <!-- Step 2: SYN/ACK -->
+        <line x1="700" y1="150" x2="122" y2="200" stroke="#2a7a2a" stroke-width="2" marker-end="url(#tcparr2)"/>
+        <rect x="270" y="148" width="280" height="65" rx="4" fill="#e8f5e9" stroke="#2a7a2a" stroke-width="1.5"/>
+        <text x="410" y="164" text-anchor="middle" font-size="9" font-weight="700" fill="#2a7a2a">Packet 2: SYN/ACK</text>
+        <text x="410" y="177" text-anchor="middle" font-size="8" fill="#555">Flags: [SYN, ACK]</text>
+        <text x="410" y="189" text-anchor="middle" font-size="7.5" fill="#555">Seq=0 (server's start), Ack=1 (client's 0+1)</text>
+        <text x="410" y="200" text-anchor="middle" font-size="7.5" fill="#888">"OK. My first byte is #0. I received your byte #0."</text>
+        <text x="410" y="211" text-anchor="middle" font-size="7" fill="#888">ACK=client's seq+1 confirms receipt</text>
+
+        <!-- Step 3: ACK -->
+        <line x1="120" y1="225" x2="698" y2="255" stroke="#1a5fa1" stroke-width="2" marker-end="url(#tcparr1)"/>
+        <rect x="270" y="228" width="280" height="55" rx="4" fill="#eef5fb" stroke="#1a5fa1" stroke-width="1.5"/>
+        <text x="410" y="244" text-anchor="middle" font-size="9" font-weight="700" fill="#1a5fa1">Packet 3: ACK</text>
+        <text x="410" y="257" text-anchor="middle" font-size="8" fill="#555">Flags: [ACK]</text>
+        <text x="410" y="269" text-anchor="middle" font-size="7.5" fill="#555">Seq=1, Ack=1 (server's 0+1)</text>
+        <text x="410" y="280" text-anchor="middle" font-size="7.5" fill="#888">"Got it. Connection established."</text>
+
+        <!-- Data phase -->
+        <rect x="5" y="285" width="810" height="45" rx="4" fill="#f0f8f0" stroke="#2a7a2a" stroke-width="1"/>
+        <text x="410" y="305" text-anchor="middle" font-size="9" font-weight="700" fill="#2a7a2a">Connection Established - Application Data Can Now Flow</text>
+        <text x="410" y="320" text-anchor="middle" font-size="7.5" fill="#555">HTTP GET / HTTP 200 OK / TLS handshake etc. All packets carry ACK to acknowledge received data continuously</text>
+
+        <defs>
+          <marker id="tcparr1" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="#1a5fa1"/></marker>
+          <marker id="tcparr2" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="#2a7a2a"/></marker>
+        </defs>
+
+      </svg>
+      <div class="diagram-caption">The three-way handshake creates a stateful connection. After Packet 3, both sides know each other's sequence numbers and the connection is open. No application data is transmitted until all three packets have been exchanged successfully. This is what TCP's reliability guarantee relies on.</div>
+    </div>
+
+    <h3>What Sequence Numbers Do</h3>
+    <p>Sequence numbers are the byte counters that make TCP reliable. Here is how they work step by step:</p>
+    <ol>
+      <li>When a client sends its SYN, it picks a random starting sequence number (e.g. 1000). This is called the ISN (Initial Sequence Number).</li>
+      <li>Every byte of data the client sends is numbered. If the client sends 500 bytes of HTTP data, the sequence number advances from 1000 to 1500.</li>
+      <li>The server sends an ACK saying "I received up to byte 1500, send me byte 1501 next." This is the acknowledgement number.</li>
+      <li>If the server does not send an ACK within the timeout period, the client re-sends the missing data. This is a TCP retransmission.</li>
+    </ol>
+
+    <p>In Wireshark, retransmissions are highlighted in black with the note "[TCP Retransmission]". A burst of retransmissions means packets are being dropped, either due to network congestion or interference from a security tool.</p>
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="section">
+    <h2>Closing a Connection: FIN vs RST</h2>
+    <p>TCP connections can end in two ways. The method used tells you a lot about whether the close was normal or abnormal.</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">Connection Teardown: Clean FIN vs Abrupt RST</div>
+      <svg viewBox="0 0 820 220" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <!-- Left: Clean FIN teardown -->
+        <rect x="5" y="5" width="390" height="210" rx="6" fill="#f0faf0" stroke="#2a7a2a" stroke-width="1.5"/>
+        <text x="200" y="24" text-anchor="middle" font-size="10" font-weight="700" fill="#1a5a1a">Clean Close (FIN/ACK)</text>
+        <text x="200" y="38" text-anchor="middle" font-size="8" fill="#555">Normal end of a connection - both sides say goodbye</text>
+
+        <line x1="60" y1="55" x2="60" y2="200" stroke="#1a5fa1" stroke-width="1.5" stroke-dasharray="5,3"/>
+        <line x1="340" y1="55" x2="340" y2="200" stroke="#d63b3b" stroke-width="1.5" stroke-dasharray="5,3"/>
+        <text x="60" y="52" text-anchor="middle" font-size="8" fill="#1a3a6a">Client</text>
+        <text x="340" y="52" text-anchor="middle" font-size="8" fill="#b71c1c">Server</text>
+
+        <line x1="60" y1="80" x2="338" y2="100" stroke="#2a7a2a" stroke-width="1.5" marker-end="url(#fa1)"/>
+        <text x="200" y="76" text-anchor="middle" font-size="7.5" fill="#2a7a2a">[FIN, ACK] - "I'm done sending"</text>
+        <line x1="340" y1="115" x2="62" y2="135" stroke="#2a7a2a" stroke-width="1.5" marker-end="url(#fa2)"/>
+        <text x="200" y="112" text-anchor="middle" font-size="7.5" fill="#2a7a2a">[ACK] - "Got it"</text>
+        <line x1="340" y1="150" x2="62" y2="170" stroke="#2a7a2a" stroke-width="1.5" marker-end="url(#fa2)"/>
+        <text x="200" y="148" text-anchor="middle" font-size="7.5" fill="#2a7a2a">[FIN, ACK] - "I'm done too"</text>
+        <line x1="60" y1="185" x2="338" y2="195" stroke="#2a7a2a" stroke-width="1.5" marker-end="url(#fa1)"/>
+        <text x="200" y="182" text-anchor="middle" font-size="7.5" fill="#2a7a2a">[ACK] - Connection fully closed</text>
+
+        <!-- Right: RST abort -->
+        <rect x="430" y="5" width="385" height="210" rx="6" fill="#fff0f0" stroke="#d63b3b" stroke-width="1.5"/>
+        <text x="622" y="24" text-anchor="middle" font-size="10" font-weight="700" fill="#b71c1c">Abrupt Reset (RST)</text>
+        <text x="622" y="38" text-anchor="middle" font-size="8" fill="#555">Connection immediately killed - three causes</text>
+
+        <line x1="480" y1="55" x2="480" y2="200" stroke="#1a5fa1" stroke-width="1.5" stroke-dasharray="5,3"/>
+        <line x1="770" y1="55" x2="770" y2="200" stroke="#d63b3b" stroke-width="1.5" stroke-dasharray="5,3"/>
+        <text x="480" y="52" text-anchor="middle" font-size="8" fill="#1a3a6a">Client</text>
+        <text x="770" y="52" text-anchor="middle" font-size="8" fill="#b71c1c">Server</text>
+
+        <line x1="480" y1="75" x2="768" y2="85" stroke="#888" stroke-width="1" stroke-dasharray="3" marker-end="url(#fa3)"/>
+        <text x="625" y="72" text-anchor="middle" font-size="7.5" fill="#888">[SYN] to closed port</text>
+        <line x1="770" y1="100" x2="482" y2="110" stroke="#d63b3b" stroke-width="2" marker-end="url(#fa4)"/>
+        <text x="625" y="97" text-anchor="middle" font-size="7.5" font-weight="700" fill="#d63b3b">[RST, ACK] - port is closed</text>
+
+        <rect x="435" y="122" width="375" height="34" rx="3" fill="#fff" stroke="#ddd"/>
+        <text x="622" y="136" text-anchor="middle" font-size="7.5" fill="#555">RST also sent when: firewall drops the connection</text>
+        <text x="622" y="148" text-anchor="middle" font-size="7.5" fill="#555">or IPS/firewall terminates a malicious session</text>
+
+        <rect x="435" y="162" width="375" height="34" rx="3" fill="#fce4ec" stroke="#d63b3b"/>
+        <text x="622" y="175" text-anchor="middle" font-size="7.5" font-weight="700" fill="#d63b3b">Mass RST packets from one source = port scan</text>
+        <text x="622" y="187" text-anchor="middle" font-size="7.5" fill="#888">Each RST means "that port is closed". Open ports get SYN/ACK.</text>
+
+        <defs>
+          <marker id="fa1" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#2a7a2a"/></marker>
+          <marker id="fa2" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#2a7a2a"/></marker>
+          <marker id="fa3" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#888"/></marker>
+          <marker id="fa4" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#d63b3b"/></marker>
+        </defs>
+
+      </svg>
+      <div class="diagram-caption">A clean FIN close takes four packets and is the normal end of any completed connection. An RST is immediate and can mean: closed port, firewall drop, or IDS termination. In a port scan, you receive RST from closed ports and SYN/ACK from open ones.</div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="section">
+    <h2>Attack Signatures in TCP Flag Patterns</h2>
+    <p>Three major attack types have distinctive TCP flag signatures. Once you know these patterns, you will recognise them immediately in Wireshark and in logs.</p>
+
+    <h3><span class="osi-badge osi-l4">Layer 4 Attack</span> TCP SYN Port Scan</h3>
+    <p>A port scan probes which ports are open on a target. The SYN scan (also called half-open scan) is the most common type because it is fast and quiet. The scanner sends a SYN to each port but intentionally never sends the final ACK. This means the connection is never fully established, so many servers do not log it at the application layer.</p>
+
+    <p><strong>Why it is detectable at Layer 4:</strong> The Sophos IPS engine tracks connection state. A large number of SYN packets from one source IP to many different destination ports on the same host, within a short time window, triggers an IPS signature. Wazuh receives the IPS alert and fires a Wazuh rule.</p>
+
+    <div class="log-label">SYN Scan - TCP Flag Pattern</div>
+    <div class="log-block"><span class="log-comment"># For each port the scanner probes:</span>
+<span class="log-comment"># Open port: handshake starts, scanner immediately sends RST</span>
+10.0.2.99 -> 10.0.1.10 : port 22  [<span class="log-hl">SYN</span>]         <span class="log-comment"># step 1: probe</span>
+10.0.1.10 -> 10.0.2.99 : port 22  [<span class="log-hl">SYN, ACK</span>]   <span class="log-comment"># step 2: port is OPEN</span>
+10.0.2.99 -> 10.0.1.10 : port 22  [<span class="log-hl">RST</span>]         <span class="log-comment"># scanner aborts, never sends ACK</span>
+
+<span class="log-comment"># Closed port: immediate RST from server</span>
+10.0.2.99 -> 10.0.1.10 : port 23  [<span class="log-hl">SYN</span>]         <span class="log-comment"># probe</span>
+10.0.1.10 -> 10.0.2.99 : port 23  [<span class="log-hl">RST, ACK</span>]   <span class="log-comment"># port is CLOSED</span>
+
+<span class="log-comment"># Pattern: this repeats for hundreds of ports within 1-2 seconds</span>
+<span class="log-comment"># Wireshark filter: tcp.flags.syn==1 and tcp.flags.ack==0 and ip.src==10.0.2.99</span></div>
+
+    <h3><span class="osi-badge osi-l4">Layer 4 Attack</span> SYN Flood DDoS</h3>
+    <p>A SYN flood targets the server's connection table. When a server receives a SYN, it allocates memory for a half-open connection and waits for the final ACK. A SYN flood sends millions of SYN packets without ever sending the ACK, exhausting the server's connection table until it cannot accept new legitimate connections.</p>
+
+    <p><strong>Why it is a Layer 4 attack:</strong> The attack exploits the stateful connection tracking that TCP requires. It does not need to understand the application (Layer 7) at all. Sophos can mitigate it using SYN cookies, which allow the firewall to respond to SYN packets without allocating connection state until the ACK arrives.</p>
+
+    <div class="log-label">SYN Flood - Log Pattern in Sophos</div>
+    <div class="log-block">date=2026-09-20 time=10:52:44 log_type=<span class="log-hl">IPS</span>
+log_component=<span class="log-val">Intrusion Prevention</span>
+log_subtype=<span class="log-hl">Drop</span>
+signature_id=<span class="log-val">28200001</span>
+signature_msg=<span class="log-hl">TCP SYN Flood</span>
+src_ip=<span class="log-val">203.0.113.50</span>
+dst_ip=<span class="log-val">10.0.1.10</span>
+dst_port=<span class="log-val">443</span>
+protocol=<span class="log-val">TCP</span>
+packets_per_second=<span class="log-hl">18500</span>     <span class="log-comment"># 18,500 SYN packets per second - clearly not legitimate</span>
+action=<span class="log-hl">Drop</span></div>
+
+    <h3><span class="osi-badge osi-l4">Layer 4</span><span class="osi-badge osi-l7">Layer 7 Attack</span> SSH Brute Force</h3>
+    <p>SSH brute force is a Layer 4/7 combination. At Layer 4, it looks like rapid, repeated TCP connections to port 22. Each attempt opens a full three-way handshake, exchanges SSH protocol messages (Layer 7), submits credentials, fails, and closes the connection. Then immediately repeats.</p>
+
+    <p>Because SSH encrypts the application layer, you cannot see the passwords being tried in Wireshark (unlike plain HTTP). But you can see the repeated connection pattern at Layer 4, and the SSH authentication failure messages appear in the system auth log which Wazuh ingests.</p>
+
+    <div class="log-label">SSH Brute Force - Wazuh Alert</div>
+    <div class="log-block">{
+  "timestamp": "<span class="log-val">2026-09-20T10:55:14.007Z</span>",
+  "rule": {
+    "id": "<span class="log-hl">5712</span>",
+    "description": "<span class="log-hl">SSHD brute force trying to get access to the system</span>",
+    "level": "<span class="log-hl">10</span>",                    <span class="log-comment">/* level 10 = significant threat */</span>
+    "groups": ["authentication_failures", "sshd", "brute_force"]
+  },
+  "data": {
+    "srcip": "<span class="log-hl">10.0.2.99</span>",             <span class="log-comment">/* attacker IP */</span>
+    "dstip": "<span class="log-val">10.0.1.10</span>",             <span class="log-comment">/* target server */</span>
+    "dstport": "<span class="log-val">22</span>",                   <span class="log-comment">/* SSH port */</span>
+    "failed_attempts": "<span class="log-hl">47</span>",           <span class="log-comment">/* 47 failed logins in the window period */</span>
+    "user": "<span class="log-val">root</span>",                   <span class="log-comment">/* username being attempted */</span>
+    "last_attempt": "<span class="log-val">2026-09-20T10:55:13Z</span>"
+  }
+}</div>
+
+    <div class="callout callout-info">
+      <div class="callout-title">Why SafeLine WAF Does Not See These Attacks</div>
+      All three attacks above (SYN scan, SYN flood, SSH brute force) operate at Layer 4. SafeLine WAF is positioned in the application layer (Layer 7) and only inspects HTTP/HTTPS traffic. SYN packets and SSH connections are invisible to it. The correct tool for Layer 4 attack detection is Sophos IPS and Wazuh with connection tracking rules.
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="section">
+    <h2>TCP vs UDP: When to Use Each</h2>
+    <p>TCP's reliability comes with a cost: every connection requires a handshake, every packet requires an acknowledgement, and lost packets cause delays while retransmission happens. For some applications, this overhead is unacceptable.</p>
+
+    <table class="field-table">
+      <thead><tr><th>Property</th><th>TCP</th><th>UDP</th></tr></thead>
+      <tbody>
+        <tr><td>OSI Layer</td><td>Layer 4 (Transport)</td><td>Layer 4 (Transport)</td></tr>
+        <tr><td>Connection setup</td><td>Three-way handshake required</td><td>No connection - just send</td></tr>
+        <tr><td>Reliability</td><td>Guaranteed delivery, retransmission on loss</td><td>Best effort, no retransmission</td></tr>
+        <tr><td>Ordering</td><td>Packets delivered in order</td><td>May arrive out of order</td></tr>
+        <tr><td>Speed overhead</td><td>Higher (handshake, ACKs)</td><td>Lower (no setup or ACKs)</td></tr>
+        <tr><td>Used for</td><td>HTTP, HTTPS, SSH, SMTP, RDP, FTP</td><td>DNS (port 53), DHCP, NTP, VoIP, video</td></tr>
+        <tr><td>Attack exploits</td><td>SYN flood, port scan, RST injection</td><td>UDP amplification DDoS (DNS, NTP)</td></tr>
+        <tr><td>In Sophos logs?</td><td>protocol=TCP</td><td>protocol=UDP</td></tr>
+      </tbody>
+    </table>
+
+    <p><strong>UDP amplification DDoS</strong> is worth understanding as a contrast to SYN floods. An attacker sends a tiny UDP request to an open DNS server with a spoofed source IP (the victim's IP). The DNS server sends a much larger response to the victim. By using thousands of DNS servers simultaneously, the attacker can generate enormous traffic volumes to the victim with minimal effort. This is a Layer 4 attack that Sophos can detect via rate limiting on inbound UDP.</p>
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="section">
+    <h2>Full TCP Header Field Reference</h2>
+    <p>This table covers every field in the TCP header, what it contains, and what suspicious values look like. You will see these fields referenced in Wireshark, Wazuh alerts, and Sophos IPS logs throughout the rest of the course.</p>
+
+    <table class="field-table">
+      <thead>
+        <tr>
+          <th>Field</th>
+          <th>Size</th>
+          <th>What it contains</th>
+          <th>Normal value</th>
+          <th>Suspicious value</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Source Port</td>
+          <td>16 bits</td>
+          <td>Port number on the sending side</td>
+          <td>1024-65535 (ephemeral, randomly chosen by OS)</td>
+          <td>Port 0 (invalid), well-known service port as source (spoofing)</td>
+        </tr>
+        <tr>
+          <td>Destination Port</td>
+          <td>16 bits</td>
+          <td>Port number of the target service</td>
+          <td>Well-known port matching service (80, 443, 22)</td>
+          <td>Port 4444 (Metasploit), 31337, or sequential scanning of all ports</td>
+        </tr>
+        <tr>
+          <td>Sequence Number</td>
+          <td>32 bits</td>
+          <td>Byte counter for this side of the conversation</td>
+          <td>Starts at random ISN, increments per byte sent</td>
+          <td>Sequence number 0 (invalid except in crafted packets), predictable ISN (old systems)</td>
+        </tr>
+        <tr>
+          <td>Acknowledgement Number</td>
+          <td>32 bits</td>
+          <td>Next byte expected from the other side</td>
+          <td>Set to received sequence number + 1</td>
+          <td>ACK number that does not match any sent data (spoofed or injected packet)</td>
+        </tr>
+        <tr>
+          <td>Window Size</td>
+          <td>16 bits</td>
+          <td>How much data receiver can accept without ACK</td>
+          <td>8192-65535 bytes (varies by OS)</td>
+          <td>Window size 0 (zero window attack, blocking transmission). Very small window may indicate DoS.</td>
+        </tr>
+        <tr>
+          <td>Flags</td>
+          <td>6 bits</td>
+          <td>URG, ACK, PSH, RST, SYN, FIN</td>
+          <td>SYN only on first packet. ACK on all others. FIN on close.</td>
+          <td>SYN+FIN together (invalid, used in Xmas scan). No flags set (NULL scan). All flags set (XMAS scan). RST flood.</td>
+        </tr>
+        <tr>
+          <td>Checksum</td>
+          <td>16 bits</td>
+          <td>Error detection for the TCP header and data</td>
+          <td>Valid checksum matching actual packet contents</td>
+          <td>Invalid checksum means the packet was tampered with or crafted by a scanner</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="section">
+    <h2><span class="osi-badge osi-l4">OSI Layer 4 - Transport</span> UDP in Depth</h2>
+    <p>UDP (User Datagram Protocol) is the other Layer 4 protocol. Where TCP sacrifices speed for reliability, UDP sacrifices reliability for speed. Understanding UDP is essential because the most common network activity you will analyse - DNS queries - uses UDP, and some of the most devastating DDoS attacks exploit UDP specifically.</p>
+
+    <h3>The UDP Header: Only 8 Bytes</h3>
+    <p>The entire UDP header is just 8 bytes. Compare this to TCP's minimum 20 bytes. The reason it is so small is that UDP strips out everything that makes TCP reliable: no flags, no sequence numbers, no acknowledgements, no connection state, no retransmission.</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">UDP Header vs TCP Header - Size and Field Comparison</div>
+      <svg viewBox="0 0 820 200" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <!-- Left: UDP -->
+        <rect x="5" y="5" width="390" height="185" rx="6" fill="#1e1e1e" stroke="#b34000" stroke-width="2"/>
+        <text x="200" y="24" text-anchor="middle" font-size="10" font-weight="700" fill="#b34000">UDP Header - 8 bytes total</text>
+
+        <rect x="15" y="32" width="180" height="32" rx="2" fill="#2a1a1a" stroke="#b34000"/>
+        <text x="105" y="44" text-anchor="middle" font-size="8.5" font-weight="700" fill="#f48771">Source Port (16 bits)</text>
+        <text x="105" y="57" text-anchor="middle" font-size="7.5" fill="#888">e.g. 49721 (ephemeral)</text>
+
+        <rect x="202" y="32" width="183" height="32" rx="2" fill="#2a1a1a" stroke="#b34000"/>
+        <text x="293" y="44" text-anchor="middle" font-size="8.5" font-weight="700" fill="#f48771">Destination Port (16 bits)</text>
+        <text x="293" y="57" text-anchor="middle" font-size="7.5" fill="#888">e.g. 53 (DNS)</text>
+
+        <rect x="15" y="70" width="180" height="32" rx="2" fill="#2a1a1a" stroke="#b34000"/>
+        <text x="105" y="82" text-anchor="middle" font-size="8.5" font-weight="700" fill="#f48771">Length (16 bits)</text>
+        <text x="105" y="95" text-anchor="middle" font-size="7.5" fill="#888">header + data in bytes</text>
+
+        <rect x="202" y="70" width="183" height="32" rx="2" fill="#2a1a1a" stroke="#b34000"/>
+        <text x="293" y="82" text-anchor="middle" font-size="8.5" font-weight="700" fill="#f48771">Checksum (16 bits)</text>
+        <text x="293" y="95" text-anchor="middle" font-size="7.5" fill="#888">error detection only</text>
+
+        <rect x="15" y="108" width="370" height="32" rx="2" fill="#1a1a2a" stroke="#555"/>
+        <text x="200" y="128" text-anchor="middle" font-size="8" fill="#888">Data payload (DNS query, DHCP message, etc.)</text>
+
+        <rect x="15" y="148" width="370" height="34" rx="3" fill="#2a1a1a"/>
+        <text x="200" y="163" text-anchor="middle" font-size="7.5" font-weight="700" fill="#b34000">What UDP does NOT have:</text>
+        <text x="200" y="176" text-anchor="middle" font-size="7" fill="#888">No flags. No sequence numbers. No ACK. No connection state. No retransmission.</text>
+
+        <!-- Right: TCP comparison -->
+        <rect x="430" y="5" width="385" height="185" rx="6" fill="#1e1e1e" stroke="#3a7fc1" stroke-width="2"/>
+        <text x="622" y="24" text-anchor="middle" font-size="10" font-weight="700" fill="#3a7fc1">TCP Header - 20 bytes minimum</text>
+
+        <rect x="440" y="32" width="177" height="26" rx="2" fill="#1a1a2a" stroke="#3a7fc1"/>
+        <text x="528" y="48" text-anchor="middle" font-size="8" fill="#9cdcfe">Source Port</text>
+        <rect x="625" y="32" width="182" height="26" rx="2" fill="#1a1a2a" stroke="#3a7fc1"/>
+        <text x="716" y="48" text-anchor="middle" font-size="8" fill="#9cdcfe">Destination Port</text>
+
+        <rect x="440" y="62" width="367" height="22" rx="2" fill="#1a1a2a" stroke="#3a7fc1"/>
+        <text x="623" y="76" text-anchor="middle" font-size="8" fill="#9cdcfe">Sequence Number (32 bits)</text>
+
+        <rect x="440" y="88" width="367" height="22" rx="2" fill="#1a1a2a" stroke="#3a7fc1"/>
+        <text x="623" y="102" text-anchor="middle" font-size="8" fill="#9cdcfe">Acknowledgement Number (32 bits)</text>
+
+        <rect x="440" y="114" width="180" height="22" rx="2" fill="#1a2a1a" stroke="#2a7a2a"/>
+        <text x="530" y="128" text-anchor="middle" font-size="8" fill="#4ec9b0">FLAGS (SYN/ACK/FIN/RST)</text>
+        <rect x="625" y="114" width="182" height="22" rx="2" fill="#1a1a2a" stroke="#3a7fc1"/>
+        <text x="716" y="128" text-anchor="middle" font-size="8" fill="#9cdcfe">Window Size</text>
+
+        <rect x="440" y="140" width="367" height="22" rx="2" fill="#1a1a2a" stroke="#3a7fc1"/>
+        <text x="623" y="154" text-anchor="middle" font-size="8" fill="#9cdcfe">Checksum + Urgent Pointer + Options</text>
+
+        <rect x="440" y="166" width="367" height="18" rx="2" fill="#2a1a1a"/>
+        <text x="623" y="179" text-anchor="middle" font-size="7.5" fill="#888">TCP = 20+ bytes. UDP = 8 bytes. UDP is lighter and faster.</text>
+
+      </svg>
+      <div class="diagram-caption">UDP has four fields, TCP has at least ten. UDP's simplicity is both its strength (speed) and its weakness (no built-in security). An attacker can craft a forged UDP packet far more easily than a forged TCP connection because there is no handshake to complete.</div>
+    </div>
+
+    <h3>Which Protocols Use UDP and Why</h3>
+    <table class="field-table">
+      <thead><tr><th>Protocol</th><th>Port</th><th>Why it uses UDP</th><th>In Sophos logs</th><th>Security relevance</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>DNS</td><td>53</td>
+          <td>Queries are tiny (under 512 bytes) and must be fast. A one-round-trip UDP exchange is far better than a TCP handshake just to look up an IP address. TCP is used for large DNS responses (zone transfers).</td>
+          <td>protocol=UDP dstport=53</td>
+          <td>DNS amplification DDoS, DNS tunnelling, DGA malware C2</td>
+        </tr>
+        <tr>
+          <td>DHCP</td><td>67 (server), 68 (client)</td>
+          <td>Clients have no IP address yet when they need DHCP. They broadcast to the network. Broadcasting requires UDP because TCP connections need an IP to connect to.</td>
+          <td>protocol=UDP dstport=67</td>
+          <td>DHCP starvation (exhaust address pool), DHCP spoofing (fake gateway)</td>
+        </tr>
+        <tr>
+          <td>NTP</td><td>123</td>
+          <td>Time sync requires minimal latency. A simple UDP request and response is sufficient. TCP overhead would introduce variable delay that defeats the purpose.</td>
+          <td>protocol=UDP dstport=123</td>
+          <td>NTP amplification DDoS (response 10x larger than request)</td>
+        </tr>
+        <tr>
+          <td>SNMP</td><td>161</td>
+          <td>Network device polling. Devices send status traps that are fire-and-forget - no need for acknowledgement of every message.</td>
+          <td>protocol=UDP dstport=161</td>
+          <td>Credential brute force (community strings), SNMP amplification</td>
+        </tr>
+        <tr>
+          <td>Syslog</td><td>514</td>
+          <td>Log forwarding. If a log message is lost, the world does not end. Speed and simplicity matter more. (Syslog over TLS on port 6514 adds reliability.)</td>
+          <td>protocol=UDP dstport=514</td>
+          <td>Log injection attacks, forged syslog messages to pollute SIEM</td>
+        </tr>
+        <tr>
+          <td>QUIC / HTTP/3</td><td>443</td>
+          <td>Modern HTTP/3 runs over QUIC, which uses UDP but implements its own reliability at the application layer. This gives TLS-level security with lower latency than TCP+TLS.</td>
+          <td>protocol=UDP dstport=443</td>
+          <td>Can bypass older firewall inspection rules that only check TCP/443</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Sophos UDP Flow Log vs TCP Flow Log</h3>
+    <p>A UDP flow log entry is shorter than a TCP one because UDP has no connection state, no handshake timing, and no retransmission counters. Here is a Sophos log entry for a DNS query (UDP) side by side with a TCP connection for comparison:</p>
+
+    <div class="log-label">Sophos Flow Log - UDP (DNS Query) searched in Graylog</div>
+    <div class="log-block">date=2026-09-20 time=10:22:14
+log_type=<span class="log-val">Firewall</span>
+log_subtype=<span class="log-val">Allowed</span>
+protocol=<span class="log-hl">UDP</span>                    <span class="log-comment"># no handshake, no state tracking</span>
+
+src_ip=<span class="log-hl">10.0.2.5</span>
+src_port=<span class="log-val">49721</span>               <span class="log-comment"># ephemeral source port</span>
+dst_ip=<span class="log-val">8.8.8.8</span>               <span class="log-comment"># Google DNS - query going to external resolver</span>
+dst_port=<span class="log-hl">53</span>                   <span class="log-comment"># DNS port</span>
+
+sent_bytes=<span class="log-val">72</span>                  <span class="log-comment"># tiny - just the query</span>
+recv_bytes=<span class="log-val">148</span>                 <span class="log-comment"># response is larger but still small</span>
+sent_pkts=<span class="log-val">1</span>
+recv_pkts=<span class="log-val">1</span>
+
+<span class="log-comment"># Note: NO duration field - UDP has no concept of connection duration</span>
+<span class="log-comment"># Note: NO retransmission count - UDP does not retransmit</span>
+<span class="log-comment"># Note: NO tcp_flags field - UDP has no flags</span>
+<span class="log-comment"># To search this in Graylog: protocol:UDP AND dst_port:53 AND src_ip:10.0.2.5</span></div>
+
+    <h3>Why UDP is a Security Risk</h3>
+    <p>UDP's lack of a handshake has two major security consequences:</p>
+
+    <p><strong>1. IP spoofing is trivial with UDP.</strong> Because UDP has no handshake, an attacker can send a UDP packet with a completely forged source IP address. The target will send the response to that forged IP (the real victim). This is the foundation of all UDP amplification DDoS attacks. With TCP, spoofing is much harder because the handshake requires a response that only the real sender could complete.</p>
+
+    <p><strong>2. No connection state means no easy firewall context.</strong> Sophos can maintain a state table for TCP connections (it knows SYN started a connection). For UDP, Sophos has to use heuristics - it tracks UDP "pseudo-sessions" based on the same src IP, src port, dst IP, dst port tuple. Any UDP packet that does not fit a recent pseudo-session triggers a stateless firewall rule. This is why UDP-based C2 and tunnelling are harder to detect than TCP-based ones.</p>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">QUIC and Firewalls</div>
+      HTTP/3 uses QUIC over UDP/443. Some older Sophos IPS signatures only check TCP/443 for HTTPS. Attackers can use QUIC tunnels to exfiltrate data over UDP/443 and bypass TCP-based TLS inspection. Sophos has specific QUIC detection rules, but they must be explicitly enabled in the application control policy. Verify in Graylog that UDP/443 traffic is being logged and correlated.
+    </div>
+  </div>
+
+  <div class="takeaways">
+    <h2>Key Takeaways</h2>
+    <ul>
+      <li>TCP operates at OSI Layer 4 (Transport). It adds reliability, ordering, and flow control on top of IP's best-effort delivery.</li>
+      <li>The six TCP flags are SYN (connect), ACK (acknowledge), FIN (close politely), RST (close abruptly), PSH (push to app), URG (urgent). The pattern of which flags are set in a stream of packets is the primary way to identify TCP-based attacks.</li>
+      <li>The three-way handshake (SYN, SYN/ACK, ACK) must complete before any application data flows. Attacks that exploit this - like SYN floods and SYN scans - operate purely at Layer 4 and are invisible to Layer 7 tools like SafeLine WAF.</li>
+      <li>A SYN scan sends SYN but never the final ACK. Open ports reply SYN/ACK. Closed ports reply RST. This fingerprints which services are running without completing any connection.</li>
+      <li>A SYN flood exploits connection state tables by sending millions of half-open connections. Sophos mitigates this with SYN cookies. Wazuh alerts on the connection rate spike.</li>
+      <li>SSH brute force is visible at Layer 4 (rapid connections to port 22) and Layer 7 (auth failure messages in /var/log/auth.log). Wazuh rule 5712 fires when the failure threshold is exceeded.</li>
+      <li>UDP is the other Layer 4 protocol. It has an 8-byte header with no flags, no sequence numbers, and no handshake. It is faster than TCP but provides no reliability or connection state.</li>
+      <li>DNS (port 53), DHCP (ports 67/68), NTP (port 123), and Syslog (port 514) all use UDP. HTTP/3 uses QUIC over UDP/443 and can bypass TCP-based firewall inspection if not explicitly configured.</li>
+      <li>Because UDP has no handshake, source IP spoofing is trivial. This makes UDP the foundation of amplification DDoS attacks. Sophos detects these via rate limits and IPS signatures. Alerts are searched in Graylog.</li>
+      <li>Sophos UDP flow logs are shorter than TCP logs - there is no duration field, no tcp_flags field, and no retransmission counter. To find UDP logs in Graylog use: protocol:UDP AND dst_port:53.</li>
+    </ul>
+  </div>
+
+</main>
+
+<nav class="chapter-nav" style="margin-top:0;">
+  <a class="nav-home" href="index.html">Home</a>
+  <a href="02-following-the-flow.html">&larr; Chapter 02</a>
+  <span class="chapter-nav-spacer"></span>
+  <a href="04-wireshark.html">Next: Wireshark &rarr;</a>
+</nav>
+</body>
+</html>

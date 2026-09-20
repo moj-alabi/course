@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 15 - Bettercap MITM | Shef Labs</title>
+  <link rel="stylesheet" href="../../style.css" />
+</head>
+<body>
+<header class="site-header">
+  <a class="logo" href="../../index.html">
+    <div class="logo-mark"><img src="../../SLCA.png" alt="SLCA" style="width:100%;height:100%;object-fit:contain;" /></div>
+    <div><div class="logo-text">Shef<span>Labs</span></div><div class="header-subtitle">Cyber Academy</div></div>
+  </a>
+  <div style="font-size:0.85rem; color:#888;">Packet Forensics and Network Telemetry</div>
+</header>
+<nav class="chapter-nav">
+  <a class="nav-home" href="index.html">Home</a>
+  <a href="15-kali-recon.html">&larr; Chapter 14</a>
+  <span class="chapter-nav-spacer"></span>
+  <span class="chapter-label">Chapter 16 of 18</span>
+  <a href="17-ir-triage-to-ticket.html">Next: IR Triage to Ticket &rarr;</a>
+</nav>
+<main class="page-wrapper">
+
+  <div class="chapter-header">
+    <div class="chapter-number">Chapter 16</div>
+    <h1>Bettercap MITM</h1>
+    <div class="chapter-tagline">ARP spoofing, HTTPS stripping, and credential interception from the attacker's perspective. How Wazuh detects the ARP changes and what the defender sees in logs.</div>
+  </div>
+
+  <div class="callout callout-warning">
+    <div class="callout-title">Lab Environment Only</div>
+    Bettercap is a powerful network attack tool. It must only be used in the isolated lab environment against lab VMs. ARP spoofing on a production network disrupts connectivity for all users on that subnet and is illegal without explicit written permission.
+  </div>
+
+  <div class="objectives-box">
+    <h3>Learning Objectives</h3>
+    <ul>
+      <li>Explain what ARP spoofing is and how it positions an attacker as a man-in-the-middle</li>
+      <li>Describe how Bettercap's HTTPS stripping module downgrades HTTPS to HTTP</li>
+      <li>Run a controlled Bettercap ARP spoof in the lab and observe the resulting Wazuh alert</li>
+      <li>Read the Wazuh ARP spoofing alert and identify the attacker MAC and IP</li>
+      <li>Identify the Sophos firewall log anomalies that appear during an active MITM attack</li>
+      <li>Describe how HSTS prevents HTTPS stripping and why it matters</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>How ARP Spoofing Works</h2>
+    <p>ARP (Address Resolution Protocol) maps IP addresses to MAC addresses on a local network. When a host wants to send traffic to a gateway, it broadcasts "who has IP 10.0.1.1?" and the gateway responds with its MAC address. The host caches this mapping in its ARP table.</p>
+    <p>In an ARP spoofing attack, the attacker sends unsolicited ARP replies to the victim and the gateway, claiming that the attacker's MAC address is the MAC for both. Both parties update their ARP caches with the forged entries. All traffic between the victim and gateway now flows through the attacker.</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">ARP Spoofing: Before and After</div>
+      <svg viewBox="0 0 820 260" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <!-- BEFORE -->
+        <rect x="10" y="10" width="380" height="115" rx="7" fill="#f0faf0" stroke="#3aaa3a" stroke-width="2"/>
+        <rect x="10" y="10" width="380" height="24" rx="7" fill="#3aaa3a"/>
+        <text x="200" y="26" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">Normal ARP (Before Attack)</text>
+        <rect x="25" y="44" width="80" height="40" rx="5" fill="#fff" stroke="#3aaa3a" stroke-width="1"/>
+        <text x="65" y="62" text-anchor="middle" font-size="8" fill="#2a8a2a" font-weight="700">Victim</text>
+        <text x="65" y="75" text-anchor="middle" font-size="7" fill="#888">10.0.0.5</text>
+        <line x1="105" y1="64" x2="175" y2="64" stroke="#3aaa3a" stroke-width="2" marker-end="url(#a1)"/>
+        <text x="140" y="56" text-anchor="middle" font-size="7" fill="#3aaa3a">direct</text>
+        <rect x="175" y="44" width="80" height="40" rx="5" fill="#fff" stroke="#3aaa3a" stroke-width="1"/>
+        <text x="215" y="62" text-anchor="middle" font-size="8" fill="#2a8a2a" font-weight="700">Gateway</text>
+        <text x="215" y="75" text-anchor="middle" font-size="7" fill="#888">10.0.0.1</text>
+        <text x="200" y="110" text-anchor="middle" font-size="8" fill="#2a8a2a">Victim ARP table: 10.0.0.1 = GW_MAC</text>
+
+        <!-- AFTER -->
+        <rect x="420" y="10" width="390" height="115" rx="7" fill="#fef0f0" stroke="#d63b3b" stroke-width="2"/>
+        <rect x="420" y="10" width="390" height="24" rx="7" fill="#d63b3b"/>
+        <text x="615" y="26" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">ARP Spoofing (After Attack)</text>
+        <rect x="430" y="44" width="70" height="40" rx="5" fill="#fff" stroke="#d63b3b" stroke-width="1"/>
+        <text x="465" y="62" text-anchor="middle" font-size="8" fill="#d63b3b" font-weight="700">Victim</text>
+        <text x="465" y="75" text-anchor="middle" font-size="7" fill="#888">10.0.0.5</text>
+        <rect x="545" y="40" width="80" height="48" rx="5" fill="#fef0f0" stroke="#d63b3b" stroke-width="2"/>
+        <text x="585" y="62" text-anchor="middle" font-size="8" fill="#d63b3b" font-weight="700">Bettercap</text>
+        <text x="585" y="75" text-anchor="middle" font-size="7" fill="#555">10.0.0.99</text>
+        <text x="585" y="86" text-anchor="middle" font-size="7" fill="#d63b3b">MITM</text>
+        <rect x="660" y="44" width="80" height="40" rx="5" fill="#fff" stroke="#888" stroke-width="1"/>
+        <text x="700" y="62" text-anchor="middle" font-size="8" fill="#555" font-weight="700">Gateway</text>
+        <text x="700" y="75" text-anchor="middle" font-size="7" fill="#888">10.0.0.1</text>
+        <line x1="500" y1="64" x2="543" y2="64" stroke="#d63b3b" stroke-width="2" marker-end="url(#a2)"/>
+        <line x1="625" y1="64" x2="658" y2="64" stroke="#d63b3b" stroke-width="2" marker-end="url(#a3)"/>
+        <text x="615" y="110" text-anchor="middle" font-size="8" fill="#d63b3b">Victim ARP table: 10.0.0.1 = ATTACKER_MAC (poisoned)</text>
+
+        <!-- ARP Reply -->
+        <text x="200" y="160" text-anchor="middle" font-size="9" font-weight="700" fill="#d63b3b">Bettercap sends unsolicited ARP replies:</text>
+        <rect x="80" y="175" width="310" height="32" rx="4" fill="#1e1e1e" stroke="#d63b3b" stroke-width="1"/>
+        <text x="235" y="191" text-anchor="middle" font-size="7.5" fill="#ce9178" font-family="Consolas, monospace">ARP Reply: 10.0.0.1 is at AA:BB:CC:DD:EE:FF (attacker MAC)</text>
+        <text x="235" y="203" text-anchor="middle" font-size="7.5" fill="#ce9178" font-family="Consolas, monospace">ARP Reply: 10.0.0.5 is at AA:BB:CC:DD:EE:FF (attacker MAC)</text>
+
+        <text x="620" y="160" text-anchor="middle" font-size="9" fill="#888">Wazuh detects the ARP reply</text>
+        <text x="620" y="174" text-anchor="middle" font-size="9" fill="#888">where 10.0.0.1 is now claimed</text>
+        <text x="620" y="188" text-anchor="middle" font-size="9" fill="#888">by a different MAC than before</text>
+        <text x="620" y="206" text-anchor="middle" font-size="9" font-weight="700" fill="#d63b3b">Fires rule 2502 - ARP Spoofing</text>
+
+        <defs>
+          <marker id="a1" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#3aaa3a"/></marker>
+          <marker id="a2" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#d63b3b"/></marker>
+          <marker id="a3" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#d63b3b"/></marker>
+        </defs>
+      </svg>
+      <div class="diagram-caption">After ARP poisoning, all victim traffic routes through Bettercap before reaching the gateway. The victim sees no disruption because Bettercap forwards the traffic.</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Wazuh ARP Spoofing Alert</h2>
+    <p>Wazuh monitors ARP traffic and compares ARP replies against a learned MAC-to-IP mapping table. When an ARP reply claims a different MAC for a previously-seen IP, Wazuh fires rule 2502.</p>
+
+    <div class="log-label">Wazuh Alert - ARP Spoofing Detected (Rule 2502)</div>
+    <div class="log-block">{
+  "<span class="log-key">timestamp</span>":       "<span class="log-hl">2026-09-20T11:05:44.102Z</span>",
+  "<span class="log-key">rule</span>": {
+    "<span class="log-key">id</span>":             "<span class="log-val">2502</span>",
+    "<span class="log-key">description</span>":  "<span class="log-val">ARP spoofing detected: IP claimed by new MAC</span>",
+    "<span class="log-key">level</span>":         <span class="log-num">9</span>,
+    "<span class="log-key">groups</span>":        ["<span class="log-val">arp</span>", "<span class="log-val">network</span>", "<span class="log-val">mitm</span>"]
+  },
+  "<span class="log-key">data</span>": {
+    "<span class="log-key">arp.ip</span>":         "<span class="log-hl">10.0.0.1</span>",
+    "<span class="log-key">arp.mac_old</span>":    "<span class="log-val">11:22:33:44:55:66</span>",
+    "<span class="log-key">arp.mac_new</span>":    "<span class="log-hl">AA:BB:CC:DD:EE:FF</span>",
+    "<span class="log-key">interface</span>":      "<span class="log-val">eth0</span>"
+  },
+  "<span class="log-key">agent</span>": { "<span class="log-key">name</span>": "<span class="log-val">victim-workstation</span>", "<span class="log-key">ip</span>": "<span class="log-val">10.0.0.5</span>" }
+}</div>
+
+    <p>The <code>arp.mac_old</code> is the legitimate gateway MAC. The <code>arp.mac_new</code> is the attacker's MAC. Cross-reference the new MAC against your DHCP lease table or switch MAC address table to identify which physical port the attacker is connected to.</p>
+  </div>
+
+  <div class="section">
+    <h2>HTTPS Stripping with Bettercap</h2>
+    <p>Once positioned as a MITM, Bettercap can run its <strong>http.proxy</strong> module with HTTPS stripping enabled. When the victim's browser tries to connect to an HTTPS site, Bettercap intercepts the request and responds over plain HTTP, while maintaining an HTTPS connection to the real server. The victim's browser sends credentials over HTTP that Bettercap reads.</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">Bettercap HTTPS Stripping Attack Flow</div>
+      <svg viewBox="0 0 820 180" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <rect x="10" y="50" width="100" height="80" rx="6" fill="#fef0f0" stroke="#d63b3b" stroke-width="1.5"/>
+        <text x="60" y="78" text-anchor="middle" font-size="9" font-weight="700" fill="#d63b3b">Victim</text>
+        <text x="60" y="93" text-anchor="middle" font-size="7.5" fill="#555">Browser</text>
+        <text x="60" y="107" text-anchor="middle" font-size="7" fill="#888">Sees HTTP</text>
+        <text x="60" y="120" text-anchor="middle" font-size="7" fill="#888">no padlock</text>
+
+        <line x1="110" y1="90" x2="198" y2="90" stroke="#f0a500" stroke-width="2" marker-end="url(#bc1)"/>
+        <text x="154" y="83" text-anchor="middle" font-size="7.5" fill="#f0a500">HTTP (plain)</text>
+        <text x="154" y="103" text-anchor="middle" font-size="7" fill="#d63b3b">credentials visible</text>
+
+        <rect x="198" y="35" width="170" height="110" rx="6" fill="#1a0a0a" stroke="#d63b3b" stroke-width="2.5"/>
+        <text x="283" y="62" text-anchor="middle" font-size="10" font-weight="700" fill="#d63b3b">Bettercap</text>
+        <text x="283" y="78" text-anchor="middle" font-size="8" fill="#ff8888">READS plaintext:</text>
+        <text x="283" y="92" text-anchor="middle" font-size="8" fill="#ff8888">username: admin</text>
+        <text x="283" y="106" text-anchor="middle" font-size="8" fill="#ff8888">password: P@ssw0rd!</text>
+        <text x="283" y="124" text-anchor="middle" font-size="7" fill="#888">Forwards to server</text>
+        <text x="283" y="136" text-anchor="middle" font-size="7" fill="#888">over HTTPS</text>
+
+        <line x1="368" y1="90" x2="450" y2="90" stroke="#3a7fc1" stroke-width="2" marker-end="url(#bc2)"/>
+        <text x="409" y="83" text-anchor="middle" font-size="7.5" fill="#3a7fc1">HTTPS (TLS)</text>
+
+        <rect x="450" y="55" width="110" height="70" rx="6" fill="#f5f5f5" stroke="#888" stroke-width="1.5"/>
+        <text x="505" y="84" text-anchor="middle" font-size="9" font-weight="700" fill="#555">Web Server</text>
+        <text x="505" y="99" text-anchor="middle" font-size="7.5" fill="#555">Receives valid</text>
+        <text x="505" y="112" text-anchor="middle" font-size="7.5" fill="#555">login request</text>
+
+        <!-- Wazuh box -->
+        <rect x="580" y="35" width="230" height="110" rx="6" fill="#f0faf0" stroke="#3aaa3a" stroke-width="2"/>
+        <text x="695" y="58" text-anchor="middle" font-size="9" font-weight="700" fill="#2a8a2a">What Wazuh Sees</text>
+        <text x="595" y="76" font-size="8" fill="#555">1. ARP spoofing alert (rule 2502)</text>
+        <text x="595" y="91" font-size="8" fill="#555">2. Victim now on plain HTTP</text>
+        <text x="595" y="106" font-size="8" fill="#555">   (Sophos logs plain HTTP to 443)</text>
+        <text x="595" y="121" font-size="8" fill="#555">3. No SafeLine WAF logs</text>
+        <text x="595" y="136" font-size="8" fill="#888">   (traffic bypasses WAF via MITM)</text>
+
+        <defs>
+          <marker id="bc1" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#f0a500"/></marker>
+          <marker id="bc2" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#3a7fc1"/></marker>
+        </defs>
+      </svg>
+      <div class="diagram-caption">The victim's browser sends credentials in plain HTTP because Bettercap stripped the HTTPS. The server logs show a normal successful login with no indication of compromise. The attacker has the credentials.</div>
+    </div>
+
+    <h3>Lab Commands</h3>
+    <div class="log-block"><span class="log-comment"># Start bettercap on the attacker's Kali VM (lab only)</span>
+$ sudo bettercap -iface eth0
+
+<span class="log-comment"># Inside bettercap interactive console:</span>
+<span class="log-comment"># Enable ARP spoofing targeting victim and gateway</span>
+bettercap &gt; set arp.spoof.targets 10.0.0.5
+bettercap &gt; set arp.spoof.fullduplex true
+bettercap &gt; arp.spoof on
+
+<span class="log-comment"># Enable HTTPS stripping proxy</span>
+bettercap &gt; set http.proxy.sslstrip true
+bettercap &gt; http.proxy on
+
+<span class="log-comment"># Sniff for credentials in plaintext</span>
+bettercap &gt; net.sniff on
+
+<span class="log-comment"># What you see in bettercap output when victim logs in:</span>
+[net.sniff.http.request] POST http://login.example.com/auth
+  username=admin&password=P%40ssw0rd%21</div>
+  </div>
+
+  <div class="section">
+    <h2>Defences Against HTTPS Stripping</h2>
+    <table class="field-table">
+      <thead><tr><th>Defence</th><th>How It Works</th><th>Where Configured</th></tr></thead>
+      <tbody>
+        <tr><td>HSTS (HTTP Strict Transport Security)</td><td>Browser refuses to connect over plain HTTP after seeing the HSTS header once. Bettercap cannot strip HTTPS if HSTS is enforced.</td><td>Web server: Strict-Transport-Security header with max-age and includeSubDomains</td></tr>
+        <tr><td>HSTS Preloading</td><td>Browser ships with a built-in list of HSTS domains. Works even on first visit, before receiving the header.</td><td>Submit domain to hstspreload.org. Takes effect in next browser release.</td></tr>
+        <tr><td>Dynamic ARP Inspection (DAI)</td><td>Managed switch validates ARP replies against a trusted DHCP snooping table. Drops forged ARP replies before they reach victims.</td><td>Layer 2 switch configuration</td></tr>
+        <tr><td>Wazuh ARP monitoring</td><td>Detects ARP table changes and alerts. Does not prevent the attack but gives early warning for response.</td><td>Wazuh agent ossec.conf - arps module enabled</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="takeaways">
+    <h2>Key Takeaways</h2>
+    <ul>
+      <li>ARP spoofing poisons the ARP caches of the victim and gateway, routing all traffic through the attacker. The victim typically does not notice because the attacker forwards all traffic.</li>
+      <li>Wazuh detects ARP spoofing when an IP address is claimed by a different MAC than previously seen. The alert includes both the old (legitimate) and new (attacker) MAC addresses.</li>
+      <li>HTTPS stripping downgrades the victim's HTTPS connection to plain HTTP, exposing credentials. The attack is only possible if the target site does not use HSTS.</li>
+      <li>HSTS (HTTP Strict Transport Security) is the most effective defence against HTTPS stripping. If a site sends the Strict-Transport-Security header, the browser will refuse to connect over plain HTTP.</li>
+      <li>During an active MITM attack, SafeLine WAF logs may be absent because the victim's traffic no longer flows through the normal network path. Wazuh and Sophos ARP/flow logs are the primary evidence sources.</li>
+    </ul>
+  </div>
+
+</main>
+<nav class="chapter-nav" style="margin-top:0;">
+  <a class="nav-home" href="index.html">Home</a>
+  <a href="15-kali-recon.html">&larr; Chapter 14</a>
+  <span class="chapter-nav-spacer"></span>
+  <a href="17-ir-triage-to-ticket.html">Next: IR Triage to Ticket &rarr;</a>
+</nav>
+</body>
+</html>

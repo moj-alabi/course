@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 05 - Reading the Browser | Shef Labs</title>
+  <link rel="stylesheet" href="../../style.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <a class="logo" href="../../index.html">
+    <div class="logo-mark"><img src="../../SLCA.png" alt="SLCA" style="width:100%;height:100%;object-fit:contain;" /></div>
+    <div>
+      <div class="logo-text">Shef<span>Labs</span></div>
+      <div class="header-subtitle">Cyber Academy</div>
+    </div>
+  </a>
+  <div style="font-size:0.85rem; color:#888;">Packet Forensics and Network Telemetry</div>
+</header>
+
+<nav class="chapter-nav">
+  <a class="nav-home" href="index.html">Home</a>
+  <a href="05-inside-http.html">&larr; Chapter 04</a>
+  <span class="chapter-nav-spacer"></span>
+  <span class="chapter-label">Chapter 06 of 18</span>
+  <a href="07-http-becomes-https.html">Next: When HTTP Becomes HTTPS &rarr;</a>
+</nav>
+
+<main class="page-wrapper">
+
+  <div class="chapter-header">
+    <div class="chapter-number">Chapter 06</div>
+    <h1>Reading the Browser</h1>
+    <div class="chapter-tagline">User-Agent, Origin, Referer, Sec-Fetch headers, and CORS. How SafeLine WAF uses these to distinguish legitimate browsers from attack tools, scanners, and bots.</div>
+  </div>
+
+  <div class="objectives-box">
+    <h3>Learning Objectives</h3>
+    <ul>
+      <li>Explain what the User-Agent header reveals and how attackers manipulate it</li>
+      <li>Describe the purpose of the Referer and Origin headers</li>
+      <li>Understand what the Sec-Fetch-* headers tell a server about the browser security context</li>
+      <li>Explain what CORS is, why it exists, and what a CORS pre-flight request looks like</li>
+      <li>Identify browser header anomalies in SafeLine WAF logs that indicate tool-based attacks</li>
+      <li>Read a realistic SafeLine WAF log entry and extract attacker fingerprint information</li>
+    </ul>
+  </div>
+
+  <!-- ====== User-Agent ====== -->
+  <div class="section">
+    <h2>The User-Agent Header</h2>
+    <p>Every HTTP request sent by a browser includes a <strong>User-Agent</strong> header. This header identifies the software making the request: the browser name, version, operating system, and rendering engine. The server can use this to tailor responses, but defenders use it to fingerprint who is really making requests.</p>
+
+    <p>Legitimate browsers send specific, well-formatted User-Agent strings. Attack tools like sqlmap, nikto, gobuster, and masscan send their own identifying strings by default, or sometimes generic/blank ones. Spotting these in logs is one of the quickest ways to identify automated attack traffic.</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">User-Agent Header: Legitimate Browser vs Attack Tools</div>
+      <svg viewBox="0 0 820 320" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <!-- Legitimate browsers -->
+        <rect x="20" y="10" width="380" height="290" rx="8" fill="#f0faf0" stroke="#3aaa3a" stroke-width="2"/>
+        <rect x="20" y="10" width="380" height="30" rx="8" fill="#3aaa3a"/>
+        <text x="210" y="30" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">Legitimate Browser User-Agents</text>
+
+        <rect x="35" y="56" width="350" height="42" rx="4" fill="#fff"/>
+        <text x="45" y="72" font-size="8" font-weight="700" fill="#2a8a2a">Chrome 126 on Windows:</text>
+        <text x="45" y="87" font-size="7.5" fill="#333" font-family="Consolas, monospace">Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36</text>
+
+        <rect x="35" y="108" width="350" height="42" rx="4" fill="#fff"/>
+        <text x="45" y="124" font-size="8" font-weight="700" fill="#2a8a2a">Firefox 127 on Linux:</text>
+        <text x="45" y="139" font-size="7.5" fill="#333" font-family="Consolas, monospace">Mozilla/5.0 (X11; Linux x86_64; rv:127.0) Gecko/20100101 Firefox/127.0</text>
+
+        <rect x="35" y="160" width="350" height="42" rx="4" fill="#fff"/>
+        <text x="45" y="176" font-size="8" font-weight="700" fill="#2a8a2a">Safari on macOS:</text>
+        <text x="45" y="191" font-size="7.5" fill="#333" font-family="Consolas, monospace">Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15</text>
+
+        <text x="210" y="230" text-anchor="middle" font-size="9" fill="#2a8a2a">Patterns: Start with "Mozilla/5.0", include</text>
+        <text x="210" y="245" text-anchor="middle" font-size="9" fill="#2a8a2a">OS and browser version, follow known format</text>
+        <text x="210" y="268" text-anchor="middle" font-size="9" fill="#888">SafeLine WAF allows these through by default</text>
+
+        <!-- Attack tools -->
+        <rect x="420" y="10" width="380" height="290" rx="8" fill="#fef0f0" stroke="#d63b3b" stroke-width="2"/>
+        <rect x="420" y="10" width="380" height="30" rx="8" fill="#d63b3b"/>
+        <text x="610" y="30" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">Attack Tool User-Agents (Flag These)</text>
+
+        <rect x="435" y="56" width="350" height="30" rx="4" fill="#fff"/>
+        <text x="445" y="70" font-size="8" font-weight="700" fill="#d63b3b">sqlmap (SQL injection tool):</text>
+        <text x="445" y="83" font-size="7.5" fill="#333" font-family="Consolas, monospace">sqlmap/1.7.9#stable (https://sqlmap.org)</text>
+
+        <rect x="435" y="96" width="350" height="30" rx="4" fill="#fff"/>
+        <text x="445" y="110" font-size="8" font-weight="700" fill="#d63b3b">Nikto (web scanner):</text>
+        <text x="445" y="123" font-size="7.5" fill="#333" font-family="Consolas, monospace">Mozilla/5.00 (Nikto/2.1.6)</text>
+
+        <rect x="435" y="136" width="350" height="30" rx="4" fill="#fff"/>
+        <text x="445" y="150" font-size="8" font-weight="700" fill="#d63b3b">Masscan (port scanner):</text>
+        <text x="445" y="163" font-size="7.5" fill="#333" font-family="Consolas, monospace">masscan/1.3 (https://github.com/robertdavidgraham/masscan)</text>
+
+        <rect x="435" y="176" width="350" height="30" rx="4" fill="#fff"/>
+        <text x="445" y="190" font-size="8" font-weight="700" fill="#d63b3b">python-requests (scripted attack):</text>
+        <text x="445" y="203" font-size="7.5" fill="#333" font-family="Consolas, monospace">python-requests/2.31.0</text>
+
+        <rect x="435" y="216" width="350" height="30" rx="4" fill="#fff"/>
+        <text x="445" y="230" font-size="8" font-weight="700" fill="#d63b3b">curl (command-line, common in exploits):</text>
+        <text x="445" y="243" font-size="7.5" fill="#333" font-family="Consolas, monospace">curl/8.4.0</text>
+
+        <text x="610" y="275" text-anchor="middle" font-size="9" fill="#d63b3b">SafeLine WAF can block or flag these by</text>
+        <text x="610" y="288" text-anchor="middle" font-size="9" fill="#d63b3b">User-Agent pattern matching</text>
+
+      </svg>
+      <div class="diagram-caption">Legitimate browsers follow a consistent User-Agent format. Attack tools typically identify themselves explicitly or use obviously non-browser strings.</div>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">Attackers Can Fake User-Agents</div>
+      Any attacker can change their User-Agent to look like a legitimate browser. A sophisticated attacker will always do this. A User-Agent that looks legitimate does not mean the request is benign. You need to use multiple signals together. However, when you see a tool name in the User-Agent, that is reliable evidence because the attacker simply forgot to change it.
+    </div>
+  </div>
+
+  <!-- ====== Referer and Origin ====== -->
+  <div class="section">
+    <h2>Referer and Origin Headers</h2>
+
+    <h3>Referer</h3>
+    <p>The <strong>Referer</strong> header tells the server which page the user came from when they made the current request. For example, if you click a link on <code>https://search.example.com</code> that takes you to <code>https://shop.example.com/product</code>, the request to the shop will include <code>Referer: https://search.example.com</code>.</p>
+    <p>For defenders, missing or anomalous Referer values are useful signals. A POST to a login endpoint with no Referer may indicate a scripted attack rather than a browser interaction. A Referer pointing to an external domain on a sensitive internal request could indicate cross-site request forgery (CSRF).</p>
+
+    <h3>Origin</h3>
+    <p>The <strong>Origin</strong> header is similar to Referer but includes only the scheme, hostname, and port, without the path. It is sent on cross-origin requests (requests to a different domain) and on all requests made by JavaScript using <code>fetch()</code> or <code>XMLHttpRequest</code>. It is more precise than Referer and harder to accidentally leak sensitive paths.</p>
+
+    <table class="field-table">
+      <thead><tr><th>Header</th><th>Example Value</th><th>When Present</th><th>Analyst Use</th></tr></thead>
+      <tbody>
+        <tr><td>Referer</td><td>https://app.example.com/login</td><td>When navigating from another page</td><td>Missing on sensitive POST = possible scripted attack. External domain = possible CSRF.</td></tr>
+        <tr><td>Origin</td><td>https://app.example.com</td><td>Cross-origin requests and JavaScript fetch</td><td>Unexpected origin on API call = possible cross-origin attack. Compare against allowed origins list.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ====== Sec-Fetch Headers ====== -->
+  <div class="section">
+    <h2>Sec-Fetch Headers: The Browser Security Context</h2>
+    <p>Modern browsers send a set of <strong>Sec-Fetch-*</strong> headers on every request. These headers describe the <em>security context</em> of the request: what caused it, where it is going, and what kind of content is expected. Unlike User-Agent or Referer, these headers cannot be set by JavaScript running in a web page (they are forbidden headers), which makes them reliable fingerprinting signals.</p>
+    <p>Attack tools that directly forge HTTP requests will not include these headers, or will include incorrect values. This makes Sec-Fetch headers one of the best ways to distinguish genuine browser requests from scripted attacks at the WAF layer.</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">Sec-Fetch Headers - What They Mean</div>
+      <svg viewBox="0 0 820 260" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <rect x="10" y="10" width="800" height="240" rx="8" fill="#f7f5f2" stroke="#888" stroke-width="1"/>
+
+        <!-- Header 1 -->
+        <rect x="25" y="30" width="770" height="44" rx="5" fill="#fff3e8" stroke="#CC5500" stroke-width="1.5"/>
+        <text x="35" y="48" font-size="9" font-weight="700" fill="#CC5500">Sec-Fetch-Site</text>
+        <text x="35" y="64" font-size="8" fill="#333">Values: none | same-origin | same-site | cross-site</text>
+        <text x="250" y="64" font-size="8" fill="#555">    "same-origin" = from same domain. "cross-site" = from external domain. Attack tools often send "none".</text>
+
+        <!-- Header 2 -->
+        <rect x="25" y="82" width="770" height="44" rx="5" fill="#eef5fb" stroke="#3a7fc1" stroke-width="1.5"/>
+        <text x="35" y="100" font-size="9" font-weight="700" fill="#3a7fc1">Sec-Fetch-Mode</text>
+        <text x="35" y="116" font-size="8" fill="#333">Values: navigate | cors | no-cors | same-origin | websocket</text>
+        <text x="310" y="116" font-size="8" fill="#555">    "navigate" = user clicked a link. "cors" = JavaScript fetch. Missing = not a browser.</text>
+
+        <!-- Header 3 -->
+        <rect x="25" y="134" width="770" height="44" rx="5" fill="#f0faf0" stroke="#3aaa3a" stroke-width="1.5"/>
+        <text x="35" y="152" font-size="9" font-weight="700" fill="#2a8a2a">Sec-Fetch-Dest</text>
+        <text x="35" y="168" font-size="8" fill="#333">Values: document | image | script | style | fetch | empty | audio | video</text>
+        <text x="360" y="168" font-size="8" fill="#555">    Describes expected content type. Mismatch is suspicious.</text>
+
+        <!-- Header 4 -->
+        <rect x="25" y="186" width="770" height="44" rx="5" fill="#fdf5ff" stroke="#9b59b6" stroke-width="1.5"/>
+        <text x="35" y="204" font-size="9" font-weight="700" fill="#7b29b6">Sec-Fetch-User</text>
+        <text x="35" y="220" font-size="8" fill="#333">Values: ?1 (only when user activated, e.g. click)</text>
+        <text x="230" y="220" font-size="8" fill="#555">    Only present when a real user interaction triggered the request. Never present in automated tools.</text>
+
+      </svg>
+      <div class="diagram-caption">Sec-Fetch headers are set by the browser and cannot be overridden by page scripts. They are reliable indicators of whether a request came from a real browser.</div>
+    </div>
+
+    <h3>Normal Browser Request vs Attack Tool - Side by Side</h3>
+    <table class="field-table">
+      <thead><tr><th>Header</th><th>Chrome Browser (normal)</th><th>sqlmap / curl (attack)</th></tr></thead>
+      <tbody>
+        <tr><td>User-Agent</td><td>Mozilla/5.0 (Windows NT 10.0...)  Chrome/126</td><td>sqlmap/1.7.9 or curl/8.4.0</td></tr>
+        <tr><td>Sec-Fetch-Site</td><td>same-origin</td><td>absent</td></tr>
+        <tr><td>Sec-Fetch-Mode</td><td>navigate</td><td>absent</td></tr>
+        <tr><td>Sec-Fetch-Dest</td><td>document</td><td>absent</td></tr>
+        <tr><td>Sec-Fetch-User</td><td>?1</td><td>absent</td></tr>
+        <tr><td>Accept</td><td>text/html,application/xhtml+xml,application/xml;q=0.9</td><td>*/* or absent</td></tr>
+        <tr><td>Accept-Language</td><td>en-GB,en;q=0.9</td><td>absent</td></tr>
+        <tr><td>Accept-Encoding</td><td>gzip, deflate, br</td><td>absent or identity</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ====== CORS ====== -->
+  <div class="section">
+    <h2>CORS: Cross-Origin Resource Sharing</h2>
+    <p>By default, a browser will not allow a script on one domain to read responses from a different domain. This security policy is called the <strong>Same-Origin Policy</strong>. It prevents a malicious website from silently reading your bank account data by making requests to your bank's API while you are logged in.</p>
+    <p><strong>CORS</strong> (Cross-Origin Resource Sharing) is the controlled mechanism for relaxing the Same-Origin Policy. A server can tell the browser "requests from these specific origins are allowed" by including <code>Access-Control-Allow-Origin</code> headers in its responses.</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">CORS Pre-Flight Request Flow</div>
+      <svg viewBox="0 0 780 300" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <!-- Browser -->
+        <rect x="20" y="80" width="120" height="60" rx="6" fill="#fff3e8" stroke="#CC5500" stroke-width="2"/>
+        <text x="80" y="107" text-anchor="middle" font-size="10" font-weight="700" fill="#CC5500">Browser</text>
+        <text x="80" y="122" text-anchor="middle" font-size="8" fill="#555">app.shef.com</text>
+
+        <!-- SafeLine WAF -->
+        <rect x="310" y="70" width="160" height="80" rx="6" fill="#eef5fb" stroke="#3a7fc1" stroke-width="2"/>
+        <text x="390" y="100" text-anchor="middle" font-size="10" font-weight="700" fill="#3a7fc1">SafeLine WAF</text>
+        <text x="390" y="115" text-anchor="middle" font-size="8" fill="#555">Inspects CORS headers</text>
+        <text x="390" y="128" text-anchor="middle" font-size="8" fill="#555">Checks allowed origins</text>
+        <text x="390" y="141" text-anchor="middle" font-size="8" fill="#555">api.shef.com</text>
+
+        <!-- Step 1: OPTIONS pre-flight -->
+        <line x1="140" y1="100" x2="308" y2="100" stroke="#f0a500" stroke-width="2" marker-end="url(#co1)"/>
+        <rect x="158" y="74" width="132" height="20" rx="3" fill="#fffbe6"/>
+        <text x="224" y="87" text-anchor="middle" font-size="7.5" fill="#8a5a00">1. OPTIONS /api/data</text>
+        <text x="224" y="118" text-anchor="middle" font-size="7" fill="#888">Origin: https://app.shef.com</text>
+        <text x="224" y="128" text-anchor="middle" font-size="7" fill="#888">Access-Control-Request-Method: POST</text>
+
+        <!-- Step 2: 204 No Content with CORS headers -->
+        <line x1="310" y1="120" x2="142" y2="130" stroke="#3a7fc1" stroke-width="2" marker-end="url(#co2)"/>
+        <rect x="160" y="148" width="132" height="32" rx="3" fill="#eef5fb"/>
+        <text x="226" y="163" text-anchor="middle" font-size="7.5" fill="#3a7fc1">2. 204 No Content</text>
+        <text x="226" y="175" text-anchor="middle" font-size="7" fill="#888">Access-Control-Allow-Origin: https://app.shef.com</text>
+
+        <!-- Step 3: Actual POST request -->
+        <line x1="140" y1="155" x2="308" y2="155" stroke="#CC5500" stroke-width="2" marker-end="url(#co3)"/>
+        <rect x="158" y="195" width="132" height="20" rx="3" fill="#fff3e8"/>
+        <text x="224" y="208" text-anchor="middle" font-size="7.5" fill="#CC5500">3. POST /api/data (actual request)</text>
+
+        <!-- Step 4: 200 OK -->
+        <line x1="310" y1="170" x2="142" y2="180" stroke="#3a7fc1" stroke-width="2" marker-end="url(#co4)"/>
+        <text x="224" y="240" text-anchor="middle" font-size="7.5" fill="#3a7fc1">4. 200 OK with data</text>
+
+        <!-- Security note -->
+        <rect x="520" y="80" width="240" height="130" rx="6" fill="#fef0f0" stroke="#d63b3b" stroke-width="1.5"/>
+        <text x="640" y="102" text-anchor="middle" font-size="9" font-weight="700" fill="#d63b3b">Misconfigured CORS Risks</text>
+        <text x="532" y="120" font-size="8" fill="#555">Access-Control-Allow-Origin: *</text>
+        <text x="532" y="134" font-size="8" fill="#888">Any website can read your API responses</text>
+        <text x="532" y="154" font-size="8" fill="#555">Reflecting attacker-supplied Origin</text>
+        <text x="532" y="168" font-size="8" fill="#888">Allows cross-site data theft</text>
+        <text x="532" y="188" font-size="8" fill="#555">SafeLine WAF logs the Origin header</text>
+        <text x="532" y="202" font-size="8" fill="#888">on every cross-origin request</text>
+
+        <defs>
+          <marker id="co1" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#f0a500"/></marker>
+          <marker id="co2" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#3a7fc1"/></marker>
+          <marker id="co3" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#CC5500"/></marker>
+          <marker id="co4" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#3a7fc1"/></marker>
+        </defs>
+      </svg>
+      <div class="diagram-caption">A CORS pre-flight is an OPTIONS request the browser sends automatically before a cross-origin POST or PUT. The server must respond with the correct allow headers or the browser will block the actual request.</div>
+    </div>
+  </div>
+
+  <!-- ====== SafeLine Log for Browser Anomaly ====== -->
+  <div class="section">
+    <h2>What a Browser Anomaly Looks Like in SafeLine WAF Logs</h2>
+    <p>When SafeLine detects a request that does not look like it came from a real browser, it can flag or block it based on missing headers, suspicious User-Agent strings, or unusual header combinations.</p>
+
+    <div class="log-label">SafeLine WAF - Blocked Bot / Scanner Request</div>
+    <div class="log-block">{
+  "<span class="log-key">timestamp</span>": "<span class="log-val">2026-09-20T11:04:22.009Z</span>",
+  "<span class="log-key">src_ip</span>": "<span class="log-hl">185.220.101.45</span>",
+  "<span class="log-key">method</span>": "<span class="log-val">GET</span>",
+  "<span class="log-key">host</span>": "<span class="log-val">shop.example.com</span>",
+  "<span class="log-key">url</span>": "<span class="log-val">/wp-admin/admin-ajax.php</span>",
+  "<span class="log-key">status_code</span>": <span class="log-num">403</span>,
+  "<span class="log-key">action</span>": "<span class="log-hl">block</span>",
+  "<span class="log-key">attack_type</span>": "<span class="log-hl">scanner</span>",
+  "<span class="log-key">user_agent</span>": "<span class="log-hl">python-requests/2.31.0</span>",
+  "<span class="log-key">sec_fetch_site</span>": "<span class="log-hl">absent</span>",
+  "<span class="log-key">sec_fetch_mode</span>": "<span class="log-hl">absent</span>",
+  "<span class="log-key">accept</span>": "<span class="log-val">*/*</span>",
+  "<span class="log-key">accept_language</span>": "<span class="log-hl">absent</span>",
+  "<span class="log-key">referer</span>": "<span class="log-hl">absent</span>"
+}</div>
+
+    <div class="callout callout-ir">
+      <div class="callout-title">Incident Response: Fingerprinting the Attacker</div>
+      The log above tells you: (1) the source IP is <code>185.220.101.45</code> which is a Tor exit node - check it against threat intel, (2) the tool is python-requests which means a custom script, not a known tool, (3) the target path <code>/wp-admin/admin-ajax.php</code> is a WordPress admin path - this host may not even run WordPress, suggesting automated scanning, (4) no Sec-Fetch headers means it is definitely not a browser. Open a ticket, look up that IP, and check whether any other internal hosts communicated with it.
+    </div>
+
+    <h3>SafeLine WAF Browser Header Fields Reference</h3>
+    <table class="field-table">
+      <thead><tr><th>Field</th><th>Normal Browser Value</th><th>Red Flag Value</th><th>Analyst Action</th></tr></thead>
+      <tbody>
+        <tr><td>user_agent</td><td>Mozilla/5.0 ... Chrome/126</td><td>sqlmap, nikto, python-requests, curl, Go-http</td><td>Block known scanner agents. Log unknown agents for review.</td></tr>
+        <tr><td>sec_fetch_site</td><td>same-origin or same-site</td><td>absent</td><td>Absent Sec-Fetch headers = not a browser. Treat as automated.</td></tr>
+        <tr><td>sec_fetch_mode</td><td>navigate or cors</td><td>absent</td><td>Combined with missing sec_fetch_site: reliable bot indicator.</td></tr>
+        <tr><td>accept_language</td><td>en-GB,en;q=0.9</td><td>absent or *</td><td>Real browsers always send Accept-Language. Absence is suspicious.</td></tr>
+        <tr><td>referer</td><td>Parent page URL</td><td>absent on authenticated POST</td><td>Missing referer on login or form submission = possible CSRF or scripted attack.</td></tr>
+        <tr><td>origin</td><td>https://app.example.com</td><td>null or unexpected domain</td><td>null origin can indicate a sandboxed iframe or data URI. Unexpected domain = CORS attack.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="takeaways">
+    <h2>Key Takeaways</h2>
+    <ul>
+      <li>The User-Agent header identifies the software making a request. Attack tools often reveal themselves through their User-Agent string. However, sophisticated attackers fake it, so never rely on User-Agent alone.</li>
+      <li>Referer tells you where the user came from. Origin is sent on cross-origin JavaScript requests. Anomalies in either can indicate CSRF or scripted attacks.</li>
+      <li>Sec-Fetch headers are set by the browser and cannot be forged by page scripts. Missing Sec-Fetch headers on a web request is a reliable indicator of a non-browser client.</li>
+      <li>CORS controls which external origins can read cross-origin responses. A wildcard Access-Control-Allow-Origin setting is a significant security misconfiguration.</li>
+      <li>In SafeLine WAF logs, combine user_agent, sec_fetch_site, accept_language, and referer to build a reliable picture of whether a request came from a real user or an automated tool.</li>
+    </ul>
+  </div>
+
+</main>
+
+<nav class="chapter-nav" style="margin-top:0;">
+  <a class="nav-home" href="index.html">Home</a>
+  <a href="05-inside-http.html">&larr; Chapter 04</a>
+  <span class="chapter-nav-spacer"></span>
+  <a href="07-http-becomes-https.html">Next: When HTTP Becomes HTTPS &rarr;</a>
+</nav>
+
+</body>
+</html>

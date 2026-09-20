@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 14 - Kali Recon Toolkit | Shef Labs</title>
+  <link rel="stylesheet" href="../../style.css" />
+</head>
+<body>
+<header class="site-header">
+  <a class="logo" href="../../index.html">
+    <div class="logo-mark"><img src="../../SLCA.png" alt="SLCA" style="width:100%;height:100%;object-fit:contain;" /></div>
+    <div><div class="logo-text">Shef<span>Labs</span></div><div class="header-subtitle">Cyber Academy</div></div>
+  </a>
+  <div style="font-size:0.85rem; color:#888;">Packet Forensics and Network Telemetry</div>
+</header>
+<nav class="chapter-nav">
+  <a class="nav-home" href="index.html">Home</a>
+  <a href="14-grafana-dashboards.html">&larr; Chapter 13</a>
+  <span class="chapter-nav-spacer"></span>
+  <span class="chapter-label">Chapter 15 of 18</span>
+  <a href="16-bettercap-mitm.html">Next: Bettercap MITM &rarr;</a>
+</nav>
+<main class="page-wrapper">
+
+  <div class="chapter-header">
+    <div class="chapter-number">Chapter 15</div>
+    <h1>Kali Recon Toolkit</h1>
+    <div class="chapter-tagline">Using nmap, gobuster, nikto, and Wireshark to perform controlled reconnaissance in the lab network and observing how each generates distinct signatures in Wazuh, Sophos, and SafeLine logs.</div>
+  </div>
+
+  <div class="callout callout-warning">
+    <div class="callout-title">Lab Environment Only</div>
+    All tools in this chapter are used exclusively against the isolated lab network. Running these tools against any system you do not own or do not have explicit written permission to test is illegal in most jurisdictions. The lab network is the only authorised target.
+  </div>
+
+  <div class="objectives-box">
+    <h3>Learning Objectives</h3>
+    <ul>
+      <li>Run a TCP SYN scan with nmap and observe the resulting Sophos IPS alert</li>
+      <li>Run a directory scan with gobuster and observe the SafeLine WAF log entries</li>
+      <li>Run nikto and identify the User-Agent in SafeLine logs</li>
+      <li>Capture nmap traffic in Wireshark and identify the TCP SYN scan pattern in packets</li>
+      <li>Correlate the attacker activity across all three tools in the logs</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>Tool 1: nmap - Network and Port Scanning</h2>
+    <p>nmap is the standard tool for discovering hosts and open ports on a network. A TCP SYN scan (the default) sends SYN packets to each target port and reads the response. SYN/ACK = port open. RST = port closed. No response = filtered by firewall.</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">TCP SYN Scan Packet Pattern (nmap -sS)</div>
+      <svg viewBox="0 0 760 200" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <rect x="10" y="20" width="100" height="140" rx="6" fill="#fef0f0" stroke="#d63b3b" stroke-width="2"/>
+        <text x="60" y="50" text-anchor="middle" font-size="9" font-weight="700" fill="#d63b3b">nmap</text>
+        <text x="60" y="65" text-anchor="middle" font-size="8" fill="#555">Kali Linux</text>
+        <text x="60" y="80" text-anchor="middle" font-size="8" fill="#555">10.0.2.99</text>
+
+        <rect x="340" y="20" width="100" height="140" rx="6" fill="#eef5fb" stroke="#3a7fc1" stroke-width="2"/>
+        <text x="390" y="50" text-anchor="middle" font-size="9" font-weight="700" fill="#3a7fc1">Target</text>
+        <text x="390" y="65" text-anchor="middle" font-size="8" fill="#555">web-server-01</text>
+        <text x="390" y="80" text-anchor="middle" font-size="8" fill="#555">10.0.1.10</text>
+
+        <line x1="110" y1="70" x2="338" y2="70" stroke="#d63b3b" stroke-width="1.5" marker-end="url(#nm1)"/>
+        <text x="224" y="64" text-anchor="middle" font-size="7.5" fill="#d63b3b">SYN port=22</text>
+
+        <line x1="338" y1="85" x2="112" y2="85" stroke="#3a7fc1" stroke-width="1.5" marker-end="url(#nm2)"/>
+        <text x="224" y="98" text-anchor="middle" font-size="7.5" fill="#3a7fc1">SYN/ACK (port 22 is OPEN)</text>
+
+        <line x1="110" y1="110" x2="338" y2="110" stroke="#d63b3b" stroke-width="1.5" marker-end="url(#nm3)"/>
+        <text x="224" y="104" text-anchor="middle" font-size="7.5" fill="#d63b3b">SYN port=80</text>
+
+        <line x1="338" y1="125" x2="112" y2="125" stroke="#3a7fc1" stroke-width="1.5" marker-end="url(#nm4)"/>
+        <text x="224" y="138" text-anchor="middle" font-size="7.5" fill="#3a7fc1">SYN/ACK (port 80 is OPEN)</text>
+
+        <line x1="110" y1="150" x2="338" y2="150" stroke="#d63b3b" stroke-width="1.5" marker-end="url(#nm5)"/>
+        <text x="224" y="144" text-anchor="middle" font-size="7.5" fill="#d63b3b">SYN port=8080</text>
+        <text x="224" y="165" text-anchor="middle" font-size="7.5" fill="#888">no response (filtered/closed)</text>
+
+        <rect x="490" y="20" width="260" height="140" rx="6" fill="#fffbe6" stroke="#f0a500" stroke-width="1.5"/>
+        <text x="620" y="42" text-anchor="middle" font-size="9" font-weight="700" fill="#8a5a00">Sophos IPS sees:</text>
+        <text x="505" y="58" font-size="7.5" fill="#555">Many SYN packets from one source</text>
+        <text x="505" y="72" font-size="7.5" fill="#555">to many ports in rapid succession</text>
+        <text x="505" y="86" font-size="7.5" fill="#555">Matches signature 18487</text>
+        <text x="505" y="100" font-size="7.5" fill="#d63b3b" font-weight="700">"TCP SYN Port Scan" - severity High</text>
+        <text x="505" y="115" font-size="7.5" fill="#555">Wazuh receives IPS alert via</text>
+        <text x="505" y="129" font-size="7.5" fill="#555">syslog integration</text>
+        <text x="505" y="143" font-size="7.5" fill="#555">rule.level = 9 in Wazuh</text>
+
+        <defs>
+          <marker id="nm1" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#d63b3b"/></marker>
+          <marker id="nm2" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#3a7fc1"/></marker>
+          <marker id="nm3" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#d63b3b"/></marker>
+          <marker id="nm4" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#3a7fc1"/></marker>
+          <marker id="nm5" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#d63b3b"/></marker>
+        </defs>
+      </svg>
+      <div class="diagram-caption">nmap sends SYN packets to each port. It does not complete the three-way handshake (no ACK), which is the signature Sophos IPS detects as a TCP SYN scan.</div>
+    </div>
+
+    <h3>Lab Command and Expected Log Output</h3>
+    <div class="log-block"><span class="log-comment"># Lab exercise command (run from Kali VM only)</span>
+$ nmap -sS -p 1-1000 10.0.1.10
+
+<span class="log-comment"># Expected output in Sophos IPS log:</span>
+<span class="log-key">log_type</span>=<span class="log-val">"IPS"</span> <span class="log-key">signature_name</span>=<span class="log-val">"TCP SYN Port Scan"</span> <span class="log-key">severity</span>=<span class="log-val">"High"</span>
+<span class="log-key">src_ip</span>=<span class="log-hl">10.0.2.99</span> <span class="log-key">dst_ip</span>=<span class="log-val">10.0.1.10</span> <span class="log-key">action</span>=<span class="log-val">Drop</span>
+
+<span class="log-comment"># Expected output in Wazuh:</span>
+<span class="log-key">rule.description</span>=<span class="log-val">"Sophos: TCP SYN Port Scan detected"</span>
+<span class="log-key">rule.level</span>=<span class="log-num">9</span>
+<span class="log-key">data.srcip</span>=<span class="log-hl">10.0.2.99</span></div>
+  </div>
+
+  <div class="section">
+    <h2>Tool 2: gobuster - Web Directory Enumeration</h2>
+    <p>gobuster tries to find hidden directories and files on a web server by requesting paths from a wordlist. It fires hundreds of requests per second, which is immediately visible in SafeLine WAF logs as a mass of 404 responses.</p>
+
+    <div class="log-block"><span class="log-comment"># Lab exercise command</span>
+$ gobuster dir -u http://10.0.1.10 -w /usr/share/wordlists/dirb/common.txt
+
+<span class="log-comment"># What SafeLine WAF sees in logs (sample, many similar entries):</span>
+{
+  "<span class="log-key">src_ip</span>": "<span class="log-hl">10.0.2.99</span>",
+  "<span class="log-key">method</span>": "<span class="log-val">GET</span>",
+  "<span class="log-key">url</span>": "<span class="log-val">/.htaccess</span>",
+  "<span class="log-key">status_code</span>": <span class="log-num">404</span>,
+  "<span class="log-key">user_agent</span>": "<span class="log-hl">gobuster/3.6</span>",
+  "<span class="log-key">attack_type</span>": "<span class="log-val">scanner</span>",
+  "<span class="log-key">action</span>": "<span class="log-val">block</span>"
+}
+<span class="log-comment"># gobuster identifies itself in User-Agent. SafeLine blocks it as a scanner.</span>
+<span class="log-comment"># Signals: 100s of 404s/second from same IP, sequential common paths</span></div>
+  </div>
+
+  <div class="section">
+    <h2>Tool 3: nikto - Web Vulnerability Scanner</h2>
+    <p>nikto is a web server scanner that tests for thousands of known vulnerabilities, misconfigurations, and outdated software. Like gobuster, its User-Agent string identifies it immediately in WAF logs.</p>
+
+    <table class="field-table">
+      <thead><tr><th>Tool</th><th>Default User-Agent</th><th>SafeLine attack_type</th><th>Detection Certainty</th></tr></thead>
+      <tbody>
+        <tr><td>nmap (HTTP probe)</td><td>Nmap Scripting Engine</td><td>scanner</td><td>High (tool name in UA)</td></tr>
+        <tr><td>gobuster</td><td>gobuster/3.6</td><td>scanner</td><td>High (tool name in UA)</td></tr>
+        <tr><td>nikto</td><td>Mozilla/5.00 (Nikto/2.1.6)</td><td>scanner</td><td>High (tool name in UA)</td></tr>
+        <tr><td>sqlmap</td><td>sqlmap/1.7.9#stable</td><td>sqli</td><td>High (tool name in UA + payload)</td></tr>
+        <tr><td>Burp Suite</td><td>User-customisable</td><td>Various</td><td>Lower (UA can be changed)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>Tool 4: Wireshark - Capturing and Reading the Scan Traffic</h2>
+    <p>Wireshark is a packet capture tool that shows every packet on the network in real time. Running it alongside nmap lets you see exactly what the TCP SYN scan looks like at the packet level, reinforcing everything you learned in Chapters 01-03.</p>
+
+    <div class="log-label">Wireshark Display Filter for nmap SYN Scan Traffic</div>
+    <div class="log-block"><span class="log-comment"># Capture filter: only see traffic from the nmap host</span>
+host 10.0.2.99
+
+<span class="log-comment"># Display filter in Wireshark: show only SYN packets (no ACK) - the scan</span>
+tcp.flags.syn == 1 and tcp.flags.ack == 0
+
+<span class="log-comment"># Display filter: show SYN/ACK responses (open ports)</span>
+tcp.flags.syn == 1 and tcp.flags.ack == 1 and ip.src == 10.0.1.10
+
+<span class="log-comment"># What you will see:</span>
+<span class="log-comment"># 10.0.2.99 -> 10.0.1.10 TCP 10.0.2.99:54821 -> 10.0.1.10:22 [SYN]</span>
+<span class="log-comment"># 10.0.1.10 -> 10.0.2.99 TCP 10.0.1.10:22 -> 10.0.2.99:54821 [SYN, ACK]  <- port 22 OPEN</span>
+<span class="log-comment"># 10.0.2.99 -> 10.0.1.10 TCP 10.0.2.99:54822 -> 10.0.1.10:23 [SYN]</span>
+<span class="log-comment"># No response for port 23 (filtered)</span></div>
+
+    <div class="callout callout-ir">
+      <div class="callout-title">Connecting Packets to Log Entries</div>
+      When you run Wireshark alongside the Grafana dashboard, you can see the alert appear in Grafana within 5-10 seconds of the first SYN packets arriving. The same src_ip (10.0.2.99) appears in the Wireshark capture, the Sophos IPS log, and the Wazuh alert JSON. This is the cross-tool correlation you practise in the hands-on labs.
+    </div>
+  </div>
+
+  <div class="takeaways">
+    <h2>Key Takeaways</h2>
+    <ul>
+      <li>nmap SYN scans generate a distinctive pattern in Sophos IPS logs: many SYN packets to sequential ports from the same source IP in a short time window, matching signature 18487.</li>
+      <li>gobuster and nikto both identify themselves in their User-Agent strings by default. SafeLine WAF blocks them as scanners immediately. Real attackers change their User-Agents.</li>
+      <li>Wireshark display filters let you isolate specific packet types. <code>tcp.flags.syn == 1 and tcp.flags.ack == 0</code> shows only outgoing scan packets. SYN/ACK responses reveal which ports are open.</li>
+      <li>The most important lab skill is cross-tool correlation: seeing the same src_ip appear in Wireshark, Sophos IPS logs, SafeLine WAF logs, and Wazuh alerts simultaneously.</li>
+    </ul>
+  </div>
+
+</main>
+<nav class="chapter-nav" style="margin-top:0;">
+  <a class="nav-home" href="index.html">Home</a>
+  <a href="14-grafana-dashboards.html">&larr; Chapter 13</a>
+  <span class="chapter-nav-spacer"></span>
+  <a href="16-bettercap-mitm.html">Next: Bettercap MITM &rarr;</a>
+</nav>
+</body>
+</html>

@@ -3,327 +3,281 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Incident Response 101: Packet Forensics and Network Telemetry | Shef Labs</title>
+  <title>SLCA Cyber Academy</title>
   <link rel="stylesheet" href="style.css" />
+  <style>
+    .academy-hero {
+      background: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 60%, #2a1200 100%);
+      padding: 3rem 2.5rem 2.5rem;
+      margin-bottom: 2.5rem;
+      border-radius: 8px;
+      position: relative;
+      overflow: hidden;
+    }
+    .academy-hero::after {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, #CC5500, #ff8800, #CC5500);
+    }
+    .academy-hero h1 { color: #fff; font-size: 2.2rem; margin: 0 0 0.6rem 0; letter-spacing: -0.02em; }
+    .academy-hero h1 span { color: #CC5500; }
+    .academy-hero p { color: #999; font-size: 1rem; max-width: 580px; margin: 0; line-height: 1.6; }
+
+    .tracks-heading {
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: #888;
+      margin: 0 0 1.25rem 0;
+    }
+
+    .track-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 1.25rem;
+      margin-bottom: 3rem;
+    }
+
+    .track-card {
+      display: flex;
+      flex-direction: column;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      overflow: hidden;
+      text-decoration: none;
+      color: inherit;
+      background: #fff;
+      transition: box-shadow 0.15s, transform 0.15s;
+    }
+    .track-card:hover { box-shadow: 0 6px 24px rgba(204,85,0,0.14); transform: translateY(-3px); }
+    .track-card.locked { opacity: 0.5; pointer-events: none; }
+
+    .track-card-bar {
+      height: 5px;
+    }
+    .bar-ir       { background: #CC5500; }
+    .bar-ti       { background: #1a5fa1; }
+    .bar-cloud    { background: #2a7a2a; }
+    .bar-red      { background: #8a0000; }
+    .bar-grc      { background: #6a1b9a; }
+    .bar-devsec   { background: #00695c; }
+
+    .track-card-body {
+      padding: 1.5rem;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .track-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.3rem;
+      margin-bottom: 0.25rem;
+      flex-shrink: 0;
+    }
+    .icon-ir     { background: #fff3e0; }
+    .icon-ti     { background: #e3f2fd; }
+    .icon-cloud  { background: #e8f5e9; }
+    .icon-red    { background: #fce4ec; }
+    .icon-grc    { background: #f3e5f5; }
+    .icon-devsec { background: #e0f2f1; }
+
+    .track-name {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #1a1a1a;
+      margin: 0;
+      line-height: 1.3;
+    }
+    .track-desc {
+      font-size: 0.855rem;
+      color: #666;
+      line-height: 1.55;
+      flex: 1;
+    }
+
+    .track-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 0.5rem;
+    }
+    .track-courses-count {
+      font-size: 0.75rem;
+      color: #888;
+      font-weight: 600;
+    }
+    .track-status-available {
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 12px;
+      background: #e8f5e9;
+      color: #1a5a1a;
+      border: 1px solid #80c080;
+    }
+    .track-status-soon {
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 12px;
+      background: #f5f5f5;
+      color: #888;
+      border: 1px solid #ccc;
+    }
+
+    .track-card-footer {
+      padding: 0.75rem 1.5rem;
+      border-top: 1px solid #f0f0f0;
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: #CC5500;
+      background: #fff;
+    }
+    .track-card.locked .track-card-footer { color: #aaa; }
+
+    .stats-row {
+      display: flex;
+      gap: 2rem;
+      flex-wrap: wrap;
+      margin-bottom: 2.5rem;
+      padding: 1.25rem 1.5rem;
+      background: #f8f8f8;
+      border-radius: 8px;
+      border: 1px solid #eee;
+    }
+    .stat-item { text-align: center; }
+    .stat-num { font-size: 1.8rem; font-weight: 800; color: #CC5500; line-height: 1; }
+    .stat-label { font-size: 0.75rem; color: #888; font-weight: 600; margin-top: 0.2rem; text-transform: uppercase; letter-spacing: 0.06em; }
+  </style>
 </head>
 <body>
 
-<!-- ============ SITE HEADER ============ -->
 <header class="site-header">
   <a class="logo" href="index.html">
     <div class="logo-mark"><img src="SLCA.png" alt="SLCA" style="width:100%;height:100%;object-fit:contain;" /></div>
-    <div>
-      <div class="logo-text">Shef<span>Labs</span></div>
-      <div class="header-subtitle">Cyber Academy</div>
-    </div>
+    <div><div class="logo-text">Shef<span>Labs</span></div><div class="header-subtitle">Cyber Academy</div></div>
   </a>
-  <div style="font-size:0.85rem; color:#888;">Incident Response 101</div>
 </header>
 
-<!-- ============ MAIN ============ -->
 <main class="page-wrapper">
 
-  <!-- Hero -->
-  <div class="index-hero">
-    <div style="font-size:0.8rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;opacity:0.75;margin-bottom:0.4rem;">Incident Response 101</div>
-    <h1>Packet Forensics and Network Telemetry</h1>
-    <p>Following the evidence from wire to detection and incident response.</p>
-    <p style="margin-top:0.75rem; font-size:0.9rem; opacity:0.8;">18 chapters &middot; Sophos + SafeLine logs in Graylog &middot; Wazuh agents &middot; Grafana (VM/container metrics) &middot; Kali &middot; Bettercap &middot; Wireshark</p>
+  <div class="academy-hero">
+    <h1>SLCA <span>Cyber Academy</span></h1>
+    <p>Practical cybersecurity training built around real tools, real attacks, and real evidence. Every course is hands-on. Every concept is tied to something you will actually use in a lab or on the job.</p>
   </div>
 
-  <!-- Series Learning Path Diagram -->
-  <div class="section">
-    <h2 style="margin-top:0;">The Learning Journey</h2>
-    <p>This course moves you through four phases. Each chapter builds on the last. By the end you will be able to collect, read, correlate and act on real network evidence using professional security tools.</p>
+  <div class="stats-row">
+    <div class="stat-item"><div class="stat-num">1</div><div class="stat-label">Track Live</div></div>
+    <div class="stat-item"><div class="stat-num">18</div><div class="stat-label">Chapters</div></div>
+    <div class="stat-item"><div class="stat-num">5</div><div class="stat-label">Tools Covered</div></div>
+    <div class="stat-item"><div class="stat-num">6</div><div class="stat-label">Tracks Planned</div></div>
+  </div>
 
-    <div class="diagram-wrap">
-      <div class="diagram-title">Course Learning Path</div>
-      <svg viewBox="0 0 860 120" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
-        <!-- Phase boxes -->
-        <!-- Phase 1 -->
-        <rect x="10" y="20" width="190" height="80" rx="8" fill="#fff3e8" stroke="#CC5500" stroke-width="2"/>
-        <text x="105" y="48" text-anchor="middle" font-size="11" font-weight="700" fill="#CC5500">PHASE 1</text>
-        <text x="105" y="65" text-anchor="middle" font-size="10" fill="#333">What is Happening?</text>
-        <text x="105" y="80" text-anchor="middle" font-size="9" fill="#888">Chapters 01 - 06</text>
-        <text x="105" y="94" text-anchor="middle" font-size="9" fill="#888">Packets, protocols, traffic</text>
-        <!-- Arrow 1 -->
-        <line x1="200" y1="60" x2="225" y2="60" stroke="#CC5500" stroke-width="2" marker-end="url(#arr)"/>
-        <!-- Phase 2 -->
-        <rect x="225" y="20" width="190" height="80" rx="8" fill="#eef5fb" stroke="#3a7fc1" stroke-width="2"/>
-        <text x="320" y="48" text-anchor="middle" font-size="11" font-weight="700" fill="#3a7fc1">PHASE 2</text>
-        <text x="320" y="65" text-anchor="middle" font-size="10" fill="#333">How Do We See It?</text>
-        <text x="320" y="80" text-anchor="middle" font-size="9" fill="#888">Chapters 07 - 08</text>
-        <text x="320" y="94" text-anchor="middle" font-size="9" fill="#888">Logs, telemetry, evidence</text>
-        <!-- Arrow 2 -->
-        <line x1="415" y1="60" x2="440" y2="60" stroke="#3a7fc1" stroke-width="2" marker-end="url(#arr2)"/>
-        <!-- Phase 3 -->
-        <rect x="440" y="20" width="190" height="80" rx="8" fill="#f0faf0" stroke="#3aaa3a" stroke-width="2"/>
-        <text x="535" y="48" text-anchor="middle" font-size="11" font-weight="700" fill="#2a8a2a">PHASE 3</text>
-        <text x="535" y="65" text-anchor="middle" font-size="10" fill="#333">How Do We Detect It?</text>
-        <text x="535" y="80" text-anchor="middle" font-size="9" fill="#888">Chapters 09 - 13</text>
-        <text x="535" y="94" text-anchor="middle" font-size="9" fill="#888">Tools, detection, alerting</text>
-        <!-- Arrow 3 -->
-        <line x1="630" y1="60" x2="655" y2="60" stroke="#3aaa3a" stroke-width="2" marker-end="url(#arr3)"/>
-        <!-- Phase 4 -->
-        <rect x="655" y="20" width="195" height="80" rx="8" fill="#fdf5ff" stroke="#9b59b6" stroke-width="2"/>
-        <text x="752" y="48" text-anchor="middle" font-size="11" font-weight="700" fill="#7b29b6">PHASE 4</text>
-        <text x="752" y="65" text-anchor="middle" font-size="10" fill="#333">How Do We Investigate?</text>
-        <text x="752" y="80" text-anchor="middle" font-size="9" fill="#888">Chapters 14 - 17</text>
-        <text x="752" y="94" text-anchor="middle" font-size="9" fill="#888">Attack, MITM, IR, Capstone</text>
+  <p class="tracks-heading">Learning Tracks</p>
 
-        <defs>
-          <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
-            <path d="M0,0 L0,6 L8,3 z" fill="#CC5500"/>
-          </marker>
-          <marker id="arr2" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
-            <path d="M0,0 L0,6 L8,3 z" fill="#3a7fc1"/>
-          </marker>
-          <marker id="arr3" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
-            <path d="M0,0 L0,6 L8,3 z" fill="#3aaa3a"/>
-          </marker>
-        </defs>
-      </svg>
-      <div class="diagram-caption">The course builds progressively from understanding traffic to running a full incident investigation.</div>
+  <div class="track-grid">
+
+    <a class="track-card" href="incident-response/index.html">
+      <div class="track-card-bar bar-ir"></div>
+      <div class="track-card-body">
+        <div class="track-icon icon-ir">&#128269;</div>
+        <div class="track-name">Incident Response</div>
+        <div class="track-desc">Detect and investigate security incidents using packet captures, firewall logs, SIEM alerts, and host telemetry. Learn the analyst workflow from first alert to written report.</div>
+        <div class="track-meta">
+          <span class="track-courses-count">1 course available, 3 coming soon</span>
+          <span class="track-status-available">Live</span>
+        </div>
+      </div>
+      <div class="track-card-footer">Explore Track &rarr;</div>
+    </a>
+
+    <div class="track-card locked">
+      <div class="track-card-bar bar-ti"></div>
+      <div class="track-card-body">
+        <div class="track-icon icon-ti">&#127760;</div>
+        <div class="track-name">Threat Intelligence</div>
+        <div class="track-desc">OSINT collection, IOC enrichment, threat actor profiling, and integrating intelligence feeds into your defensive tools. Learn to turn raw indicators into actionable context.</div>
+        <div class="track-meta">
+          <span class="track-courses-count">Courses in development</span>
+          <span class="track-status-soon">Coming Soon</span>
+        </div>
+      </div>
+      <div class="track-card-footer">Coming Soon</div>
     </div>
-  </div>
 
-  <!-- Tool Stack Overview -->
-  <div class="section">
-    <h2 style="margin-top:0;">Your Tool Stack</h2>
-    <p>These are the real tools you will use throughout the course. Each chapter shows you what that tool sees during normal and attack traffic.</p>
-    <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(240px,1fr)); gap:0.75rem; margin-top:1rem;">
-
-      <div style="border:1px solid #e8d5c4; border-radius:6px; padding:1rem; background:#fff8f4;">
-        <div style="font-weight:700; color:#CC5500; margin-bottom:0.3rem;">Sophos Firewall</div>
-        <div style="font-size:0.85rem; color:#555;">Perimeter defence, IPS, packet capture, traffic flow logs, threat feed correlation.</div>
+    <div class="track-card locked">
+      <div class="track-card-bar bar-cloud"></div>
+      <div class="track-card-body">
+        <div class="track-icon icon-cloud">&#9729;</div>
+        <div class="track-name">Cloud Security</div>
+        <div class="track-desc">AWS and Azure security fundamentals. IAM misconfigurations, CloudTrail log analysis, S3 exposure, and detecting cloud-based attacks using native tooling and third-party SIEMs.</div>
+        <div class="track-meta">
+          <span class="track-courses-count">Courses in development</span>
+          <span class="track-status-soon">Coming Soon</span>
+        </div>
       </div>
-
-      <div style="border:1px solid #dce8f5; border-radius:6px; padding:1rem; background:#eef5fb;">
-        <div style="font-weight:700; color:#3a7fc1; margin-bottom:0.3rem;">SafeLine WAF</div>
-        <div style="font-size:0.85rem; color:#555;">Web application firewall. Detects and blocks SQLi, XSS, path traversal, and other Layer 7 attacks.</div>
-      </div>
-
-      <div style="border:1px solid #e8d5c4; border-radius:6px; padding:1rem; background:#fff3e8;">
-        <div style="font-weight:700; color:#8B3300; margin-bottom:0.3rem;">Wazuh</div>
-        <div style="font-size:0.85rem; color:#555;">Open-source IDS and SIEM. Ingests logs from agents, matches rules, fires alerts, runs active response.</div>
-      </div>
-
-      <div style="border:1px solid #e8d5f5; border-radius:6px; padding:1rem; background:#fdf5ff;">
-        <div style="font-weight:700; color:#7b29b6; margin-bottom:0.3rem;">Grafana</div>
-        <div style="font-size:0.85rem; color:#555;">Observability and dashboarding. Visualises metrics from all tools, fires alerts when thresholds are breached.</div>
-      </div>
-
-      <div style="border:1px solid #ccc; border-radius:6px; padding:1rem; background:#f5f5f5;">
-        <div style="font-weight:700; color:#1a1a1a; margin-bottom:0.3rem;">Kali Linux</div>
-        <div style="font-size:0.85rem; color:#555;">Controlled offensive platform. Used to generate realistic attack traffic so you can see what defenders observe.</div>
-      </div>
-
-      <div style="border:1px solid #e8d8a0; border-radius:6px; padding:1rem; background:#fff8e8;">
-        <div style="font-weight:700; color:#8a5a00; margin-bottom:0.3rem;">Bettercap</div>
-        <div style="font-size:0.85rem; color:#555;">MITM framework. ARP spoofing, HTTP sniffing, HTTPS stripping, DNS spoofing and more.</div>
-      </div>
-
+      <div class="track-card-footer">Coming Soon</div>
     </div>
-  </div>
 
-  <!-- Chapter Grid -->
-  <h2 style="margin-top:2rem; border-left:4px solid #CC5500; padding-left:0.75rem;">All Chapters</h2>
-
-  <div class="chapter-grid">
-
-    <a class="chapter-card" href="01-life-of-a-packet.html">
-      <div class="chapter-card-num">Chapter 01</div>
-      <div class="chapter-card-title">The Life of a Packet</div>
-      <div class="chapter-card-desc">From application to wire. The OSI and TCP/IP stacks explained, and where Sophos and Wazuh sit in the path.</div>
-      <div style="margin-top:0.6rem;">
-        <span class="tool-badge sophos">Sophos</span>
-        <span class="tool-badge wazuh">Wazuh</span>
+    <div class="track-card locked">
+      <div class="track-card-bar bar-red"></div>
+      <div class="track-card-body">
+        <div class="track-icon icon-red">&#127919;</div>
+        <div class="track-name">Red Team Fundamentals</div>
+        <div class="track-desc">Reconnaissance, exploitation, post-exploitation, and reporting from the attacker perspective. Builds on the defensive knowledge from the IR track to understand how attacks are executed.</div>
+        <div class="track-meta">
+          <span class="track-courses-count">Courses in development</span>
+          <span class="track-status-soon">Coming Soon</span>
+        </div>
       </div>
-    </a>
+      <div class="track-card-footer">Coming Soon</div>
+    </div>
 
-    <a class="chapter-card" href="02-following-the-flow.html">
-      <div class="chapter-card-num">Chapter 02</div>
-      <div class="chapter-card-title">Following the Flow</div>
-      <div class="chapter-card-desc">MAC addresses, IP addresses, ports, ARP, DNS, routing and gateways. Flow log fields from Sophos and Wazuh.</div>
-      <div style="margin-top:0.6rem;">
-        <span class="tool-badge sophos">Sophos</span>
-        <span class="tool-badge wazuh">Wazuh</span>
+    <div class="track-card locked">
+      <div class="track-card-bar bar-grc"></div>
+      <div class="track-card-body">
+        <div class="track-icon icon-grc">&#128196;</div>
+        <div class="track-name">Governance, Risk and Compliance</div>
+        <div class="track-desc">ISO 27001, NIST CSF, and SOC 2 applied to real environments. Risk register construction, control mapping, audit preparation, and evidence collection workflows.</div>
+        <div class="track-meta">
+          <span class="track-courses-count">Courses in development</span>
+          <span class="track-status-soon">Coming Soon</span>
+        </div>
       </div>
-    </a>
+      <div class="track-card-footer">Coming Soon</div>
+    </div>
 
-    <a class="chapter-card" href="03-the-tcp-conversation.html">
-      <div class="chapter-card-num">Chapter 03</div>
-      <div class="chapter-card-title">The TCP Conversation</div>
-      <div class="chapter-card-desc">SYN, SYN/ACK, ACK, sequence numbers, retransmissions, teardown. PCAP walkthrough and Wazuh network log fields.</div>
-      <div style="margin-top:0.6rem;">
-        <span class="tool-badge sophos">Sophos</span>
-        <span class="tool-badge wazuh">Wazuh</span>
+    <div class="track-card locked">
+      <div class="track-card-bar bar-devsec"></div>
+      <div class="track-card-body">
+        <div class="track-icon icon-devsec">&#128296;</div>
+        <div class="track-name">DevSecOps</div>
+        <div class="track-desc">Integrating security into CI/CD pipelines. SAST, DAST, container scanning, secrets management, and building security gates that do not slow down development teams.</div>
+        <div class="track-meta">
+          <span class="track-courses-count">Courses in development</span>
+          <span class="track-status-soon">Coming Soon</span>
+        </div>
       </div>
-    </a>
-
-    <a class="chapter-card" href="04-wireshark.html">
-      <div class="chapter-card-num">Chapter 04</div>
-      <div class="chapter-card-title">Wireshark: Reading Packets</div>
-      <div class="chapter-card-desc">The Wireshark interface, capture vs display filters, protocol layer dissection, and identifying seven attacks directly from a PCAP: port scan, brute force, credential theft, ARP spoofing, directory scan, HTTPS stripping, and exfiltration.</div>
-      <div style="margin-top:0.6rem;">
-        <span class="tool-badge wazuh">Wireshark</span>
-      </div>
-    </a>
-
-    <a class="chapter-card" href="05-inside-http.html">
-      <div class="chapter-card-num">Chapter 05</div>
-      <div class="chapter-card-title">Inside HTTP</div>
-      <div class="chapter-card-desc">Requests, responses, methods, status codes, headers, cookies and sessions. SafeLine WAF access log fields.</div>
-      <div style="margin-top:0.6rem;">
-        <span class="tool-badge safeline">SafeLine</span>
-        <span class="tool-badge wazuh">Wazuh</span>
-      </div>
-    </a>
-
-    <a class="chapter-card" href="06-reading-the-browser.html">
-      <div class="chapter-card-num">Chapter 06</div>
-      <div class="chapter-card-title">Reading the Browser</div>
-      <div class="chapter-card-desc">User-Agent, Origin, Referer, Sec-Fetch-*, CORS pre-flight. What anomalies look like in SafeLine logs.</div>
-      <div style="margin-top:0.6rem;">
-        <span class="tool-badge safeline">SafeLine</span>
-      </div>
-    </a>
-
-    <a class="chapter-card" href="07-http-becomes-https.html">
-      <div class="chapter-card-num">Chapter 07</div>
-      <div class="chapter-card-title">When HTTP Becomes HTTPS</div>
-      <div class="chapter-card-desc">TLS handshake, certificate chains, what Sophos SSL inspection reveals and what Bettercap can expose.</div>
-      <div style="margin-top:0.6rem;">
-        <span class="tool-badge sophos">Sophos</span>
-        <span class="tool-badge bettercap">Bettercap</span>
-        <span class="tool-badge wazuh">Wazuh</span>
-      </div>
-    </a>
-
-    <a class="chapter-card" href="08-reading-logs.html">
-      <div class="chapter-card-num">Chapter 08</div>
-      <div class="chapter-card-title">Reading Logs Like an Analyst</div>
-      <div class="chapter-card-desc">Log anatomy, common formats (syslog, JSON, CEF, key=value), pattern recognition and side-by-side field reference tables.</div>
-      <div style="margin-top:0.6rem;">
-        <span class="tool-badge wazuh">Wazuh</span>
-        <span class="tool-badge sophos">Sophos</span>
-        <span class="tool-badge safeline">SafeLine</span>
-      </div>
-    </a>
-
-    <a class="chapter-card" href="09-packets-to-evidence.html">
-      <div class="chapter-card-num">Chapter 09</div>
-      <div class="chapter-card-title">From Packets to Evidence</div>
-      <div class="chapter-card-desc">PCAP pipeline, NetFlow, Sophos capture workflow, Wazuh agent pipeline, SafeLine events and Grafana metrics.</div>
-      <div style="margin-top:0.6rem;">
-        <span class="tool-badge sophos">Sophos</span>
-        <span class="tool-badge wazuh">Wazuh</span>
-        <span class="tool-badge grafana">Grafana</span>
-      </div>
-    </a>
-
-    <a class="chapter-card" href="10-detecting-abnormal.html">
-      <div class="chapter-card-num">Chapter 10</div>
-      <div class="chapter-card-title">Detecting the Abnormal</div>
-      <div class="chapter-card-desc">Baselines, scanning patterns, brute force signatures, DDoS indicators. Wazuh rules and Grafana alert panels.</div>
-      <div style="margin-top:0.6rem;">
-        <span class="tool-badge wazuh">Wazuh</span>
-        <span class="tool-badge grafana">Grafana</span>
-        <span class="tool-badge safeline">SafeLine</span>
-      </div>
-    </a>
-
-    <a class="chapter-card" href="11-wazuh-deep-dive.html">
-      <div class="chapter-card-num">Chapter 11</div>
-      <div class="chapter-card-title">Wazuh Deep Dive</div>
-      <div class="chapter-card-desc">Alert levels 1-15, decoder pipeline, complete alert JSON schema, File Integrity Monitoring, and OpenSearch query reference.</div>
-      <div style="margin-top:0.6rem;">
-        <span class="tool-badge wazuh">Wazuh</span>
-        <span class="tool-badge grafana">Grafana</span>
-      </div>
-    </a>
-
-    <a class="chapter-card" href="12-safeline-deep-dive.html">
-      <div class="chapter-card-num">Chapter 12</div>
-      <div class="chapter-card-title">SafeLine WAF Deep Dive</div>
-      <div class="chapter-card-desc">Architecture, detection modes, attack type taxonomy, rate limiting, and the complete SafeLine log field reference for every web attack category.</div>
-      <div style="margin-top:0.6rem;">
-        <span class="tool-badge safeline">SafeLine</span>
-        <span class="tool-badge wazuh">Wazuh</span>
-      </div>
-    </a>
-
-    <a class="chapter-card" href="13-sophos-forensics.html">
-      <div class="chapter-card-num">Chapter 13</div>
-      <div class="chapter-card-title">Sophos Forensics</div>
-      <div class="chapter-card-desc">The six Sophos log types, firewall policy log anatomy, IPS events, application control, SSL log, and multi-log incident correlation.</div>
-      <div style="margin-top:0.6rem;">
-        <span class="tool-badge sophos">Sophos</span>
-        <span class="tool-badge wazuh">Wazuh</span>
-      </div>
-    </a>
-
-    <a class="chapter-card" href="14-grafana-dashboards.html">
-      <div class="chapter-card-num">Chapter 14</div>
-      <div class="chapter-card-title">Grafana Dashboards</div>
-      <div class="chapter-card-desc">How Grafana queries Wazuh OpenSearch, the five panel types, reading time-series spikes, alert rules, and building Lucene queries.</div>
-      <div style="margin-top:0.6rem;">
-        <span class="tool-badge grafana">Grafana</span>
-        <span class="tool-badge wazuh">Wazuh</span>
-      </div>
-    </a>
-
-    <a class="chapter-card" href="15-kali-recon.html">
-      <div class="chapter-card-num">Chapter 15</div>
-      <div class="chapter-card-title">Kali Recon Toolkit</div>
-      <div class="chapter-card-desc">nmap SYN scans, gobuster directory enumeration, nikto, and Wireshark. Each tool's log signature in Sophos IPS, SafeLine WAF, and Wazuh.</div>
-      <div style="margin-top:0.6rem;">
-        <span class="tool-badge kali">Kali</span>
-        <span class="tool-badge sophos">Sophos</span>
-        <span class="tool-badge wazuh">Wazuh</span>
-        <span class="tool-badge safeline">SafeLine</span>
-      </div>
-    </a>
-
-    <a class="chapter-card" href="16-bettercap-mitm.html">
-      <div class="chapter-card-num">Chapter 16</div>
-      <div class="chapter-card-title">Bettercap: The MITM Lab</div>
-      <div class="chapter-card-desc">ARP spoofing, HTTP sniffing, HTTPS stripping, DNS spoofing and the evidence trail left across Sophos, Wazuh and the browser.</div>
-      <div style="margin-top:0.6rem;">
-        <span class="tool-badge bettercap">Bettercap</span>
-        <span class="tool-badge sophos">Sophos</span>
-        <span class="tool-badge wazuh">Wazuh</span>
-      </div>
-    </a>
-
-    <a class="chapter-card" href="17-ir-triage-to-ticket.html">
-      <div class="chapter-card-num">Chapter 17</div>
-      <div class="chapter-card-title">IR Triage to Ticket</div>
-      <div class="chapter-card-desc">Five-minute triage checklist, containment actions by attack category, professional incident ticket anatomy, and escalation decision tree.</div>
-      <div style="margin-top:0.6rem;">
-        <span class="tool-badge wazuh">Wazuh</span>
-        <span class="tool-badge sophos">Sophos</span>
-        <span class="tool-badge grafana">Grafana</span>
-        <span class="tool-badge safeline">SafeLine</span>
-      </div>
-    </a>
-
-    <a class="chapter-card" href="18-capstone.html">
-      <div class="chapter-card-num">Chapter 18</div>
-      <div class="chapter-card-title">Capstone: Reconstruct the Attack</div>
-      <div class="chapter-card-desc">You receive raw telemetry from all tools. Reconstruct the kill chain, write the incident report and close the ticket.</div>
-      <div style="margin-top:0.6rem;">
-        <span class="tool-badge wazuh">Wazuh</span>
-        <span class="tool-badge sophos">Sophos</span>
-        <span class="tool-badge safeline">SafeLine</span>
-        <span class="tool-badge grafana">Grafana</span>
-        <span class="tool-badge kali">Kali</span>
-      </div>
-    </a>
+      <div class="track-card-footer">Coming Soon</div>
+    </div>
 
   </div>
 
 </main>
+
+<footer style="text-align:center; padding:2rem; font-size:0.78rem; color:#aaa; border-top:1px solid #eee;">
+  SLCA Cyber Academy
+</footer>
 
 </body>
 </html>

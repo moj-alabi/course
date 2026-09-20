@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 16 - IR Triage to Ticket | Shef Labs</title>
+  <link rel="stylesheet" href="../../style.css" />
+</head>
+<body>
+<header class="site-header">
+  <a class="logo" href="../../index.html">
+    <div class="logo-mark"><img src="../../SLCA.png" alt="SLCA" style="width:100%;height:100%;object-fit:contain;" /></div>
+    <div><div class="logo-text">Shef<span>Labs</span></div><div class="header-subtitle">Cyber Academy</div></div>
+  </a>
+  <div style="font-size:0.85rem; color:#888;">Packet Forensics and Network Telemetry</div>
+</header>
+<nav class="chapter-nav">
+  <a class="nav-home" href="index.html">Home</a>
+  <a href="16-bettercap-mitm.html">&larr; Chapter 15</a>
+  <span class="chapter-nav-spacer"></span>
+  <span class="chapter-label">Chapter 17 of 18</span>
+  <a href="18-capstone.html">Next: Capstone &rarr;</a>
+</nav>
+<main class="page-wrapper">
+
+  <div class="chapter-header">
+    <div class="chapter-number">Chapter 17</div>
+    <h1>IR Triage to Ticket</h1>
+    <div class="chapter-tagline">The complete incident response workflow: from first alert to closed ticket. Triage methodology, evidence collection, containment actions, and professional ticket documentation.</div>
+  </div>
+
+  <div class="objectives-box">
+    <h3>Learning Objectives</h3>
+    <ul>
+      <li>Apply a structured triage process to a new Grafana alert in under five minutes</li>
+      <li>Collect and preserve the minimum evidence set required to write a complete ticket</li>
+      <li>Execute the correct containment action for each attack category</li>
+      <li>Write a clear, precise incident ticket that meets professional SOC standards</li>
+      <li>Identify when to escalate an incident beyond tier-1 response</li>
+      <li>Close a ticket correctly with evidence, timeline, and recommended remediation</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>The IR Lifecycle</h2>
+    <div class="diagram-wrap">
+      <div class="diagram-title">Incident Response Lifecycle</div>
+      <svg viewBox="0 0 820 130" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <rect x="10" y="25" width="110" height="70" rx="6" fill="#fff3e8" stroke="#CC5500" stroke-width="2"/>
+        <text x="65" y="54" text-anchor="middle" font-size="9" font-weight="700" fill="#CC5500">1. Detect</text>
+        <text x="65" y="68" text-anchor="middle" font-size="7.5" fill="#555">Grafana alert</text>
+        <text x="65" y="82" text-anchor="middle" font-size="7.5" fill="#555">fires</text>
+        <line x1="120" y1="60" x2="148" y2="60" stroke="#CC5500" stroke-width="2" marker-end="url(#ir1)"/>
+
+        <rect x="148" y="25" width="110" height="70" rx="6" fill="#fffbe6" stroke="#f0a500" stroke-width="2"/>
+        <text x="203" y="54" text-anchor="middle" font-size="9" font-weight="700" fill="#8a5a00">2. Triage</text>
+        <text x="203" y="68" text-anchor="middle" font-size="7.5" fill="#555">Orient, scope</text>
+        <text x="203" y="82" text-anchor="middle" font-size="7.5" fill="#555">assess severity</text>
+        <line x1="258" y1="60" x2="286" y2="60" stroke="#f0a500" stroke-width="2" marker-end="url(#ir2)"/>
+
+        <rect x="286" y="25" width="110" height="70" rx="6" fill="#fef0f0" stroke="#d63b3b" stroke-width="2"/>
+        <text x="341" y="54" text-anchor="middle" font-size="9" font-weight="700" fill="#d63b3b">3. Contain</text>
+        <text x="341" y="68" text-anchor="middle" font-size="7.5" fill="#555">Block IP, isolate</text>
+        <text x="341" y="82" text-anchor="middle" font-size="7.5" fill="#555">host, reset creds</text>
+        <line x1="396" y1="60" x2="424" y2="60" stroke="#d63b3b" stroke-width="2" marker-end="url(#ir3)"/>
+
+        <rect x="424" y="25" width="110" height="70" rx="6" fill="#eef5fb" stroke="#3a7fc1" stroke-width="2"/>
+        <text x="479" y="54" text-anchor="middle" font-size="9" font-weight="700" fill="#3a7fc1">4. Investigate</text>
+        <text x="479" y="68" text-anchor="middle" font-size="7.5" fill="#555">Full log review</text>
+        <text x="479" y="82" text-anchor="middle" font-size="7.5" fill="#555">timeline build</text>
+        <line x1="534" y1="60" x2="562" y2="60" stroke="#3a7fc1" stroke-width="2" marker-end="url(#ir4)"/>
+
+        <rect x="562" y="25" width="110" height="70" rx="6" fill="#f0faf0" stroke="#3aaa3a" stroke-width="2"/>
+        <text x="617" y="54" text-anchor="middle" font-size="9" font-weight="700" fill="#2a8a2a">5. Remediate</text>
+        <text x="617" y="68" text-anchor="middle" font-size="7.5" fill="#555">Patch, harden</text>
+        <text x="617" y="82" text-anchor="middle" font-size="7.5" fill="#555">restore service</text>
+        <line x1="672" y1="60" x2="700" y2="60" stroke="#3aaa3a" stroke-width="2" marker-end="url(#ir5)"/>
+
+        <rect x="700" y="25" width="110" height="70" rx="6" fill="#f5f0fa" stroke="#9b59b6" stroke-width="2"/>
+        <text x="755" y="54" text-anchor="middle" font-size="9" font-weight="700" fill="#7b29b6">6. Close</text>
+        <text x="755" y="68" text-anchor="middle" font-size="7.5" fill="#555">Document ticket</text>
+        <text x="755" y="82" text-anchor="middle" font-size="7.5" fill="#555">lessons learned</text>
+
+        <defs>
+          <marker id="ir1" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#CC5500"/></marker>
+          <marker id="ir2" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#f0a500"/></marker>
+          <marker id="ir3" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#d63b3b"/></marker>
+          <marker id="ir4" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#3a7fc1"/></marker>
+          <marker id="ir5" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#3aaa3a"/></marker>
+        </defs>
+      </svg>
+      <div class="diagram-caption">The six-stage IR lifecycle. Triage and containment are time-critical. Investigation and remediation can be more methodical. Always document throughout.</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Five-Minute Triage Checklist</h2>
+    <p>When a new alert appears in Grafana, run through this checklist before touching any tool. Discipline here prevents wasted time chasing false positives and ensures you do not miss a genuine incident.</p>
+    <table class="field-table">
+      <thead><tr><th>Step</th><th>Question</th><th>Where to Look</th><th>Time Budget</th></tr></thead>
+      <tbody>
+        <tr><td>1. Read the alert</td><td>What is the rule ID, level, and description?</td><td>Grafana alert table or Wazuh alert JSON</td><td>30 seconds</td></tr>
+        <tr><td>2. Identify source</td><td>What is the source IP? Internal or external?</td><td>data.srcip field in Wazuh alert</td><td>30 seconds</td></tr>
+        <tr><td>3. Check threat intel</td><td>Is the source IP known malicious?</td><td>VirusTotal / AbuseIPDB lookup</td><td>60 seconds</td></tr>
+        <tr><td>4. Scope the incident</td><td>What else has this IP done? How many hosts?</td><td>Sophos Firewall log, SafeLine WAF log filtered by src_ip</td><td>90 seconds</td></tr>
+        <tr><td>5. Assess severity</td><td>Is this a false positive, probe, or active attack?</td><td>Combination of rule level, attack type, and scope</td><td>60 seconds</td></tr>
+        <tr><td>6. Decide action</td><td>Block, escalate, monitor, or close as FP?</td><td>Use the containment reference table below</td><td>30 seconds</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>Containment Actions by Attack Category</h2>
+    <table class="field-table">
+      <thead><tr><th>Attack Category</th><th>Immediate Containment</th><th>Who Executes</th><th>Escalate If</th></tr></thead>
+      <tbody>
+        <tr><td>Port Scan (external)</td><td>Add source IP to Sophos block list. Log and monitor for follow-up attacks.</td><td>Tier-1 analyst</td><td>Scan followed by successful connection to internal host</td></tr>
+        <tr><td>Web Scanner / Bot</td><td>SafeLine WAF already blocking. Verify mode is Intercept, not Observe.</td><td>Tier-1 analyst</td><td>Scanner uses legitimate browser UA (not detected by SafeLine)</td></tr>
+        <tr><td>SQL Injection (blocked)</td><td>Already blocked. Record src_ip as IOC. Check for earlier successful requests from same IP.</td><td>Tier-1 analyst</td><td>Any 200-status response to an SQLi-containing URL from the same IP</td></tr>
+        <tr><td>SSH Brute Force</td><td>Block src_ip in Sophos. Check for any successful logins from that IP after failures.</td><td>Tier-1 analyst</td><td>Successful login after failures. Check agent.name for lateral movement.</td></tr>
+        <tr><td>Confirmed Compromise</td><td>Isolate host from network. Preserve disk image. Reset all credentials for that host.</td><td>Tier-2 / CISO notification</td><td>Always - this is the escalation point</td></tr>
+        <tr><td>ARP Spoofing</td><td>Identify attacker by MAC. Physically disconnect the offending switch port.</td><td>Tier-1 with network team</td><td>Always - MITM = active insider or physical compromise</td></tr>
+        <tr><td>Data Exfiltration</td><td>Block dst_ip on Sophos immediately. Isolate source host. Contact legal/compliance.</td><td>Tier-2 / CISO notification</td><td>Always - potential breach notification obligations</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>Writing a Professional Incident Ticket</h2>
+    <p>Every incident must be documented in a ticket. A complete ticket allows any analyst to pick up the investigation, provides an audit trail, and is required for breach notification and insurance claims.</p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">Incident Ticket Anatomy</div>
+      <svg viewBox="0 0 820 280" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <rect x="10" y="10" width="800" height="260" rx="7" fill="#fafafa" stroke="#ccc" stroke-width="1.5"/>
+        <rect x="10" y="10" width="800" height="30" rx="7" fill="#CC5500"/>
+        <text x="420" y="30" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">INC-2026-0042 | SSH Brute Force + Suspected Lateral Movement | OPEN | Priority: P2</text>
+
+        <text x="22" y="62" font-size="9" font-weight="700" fill="#CC5500">Summary (one sentence)</text>
+        <text x="22" y="76" font-size="8.5" fill="#333">External host 10.0.2.99 conducted SSH brute force against web-server-01 (10.0.1.10) starting 10:22 UTC on 2026-09-20, achieving successful authentication at 10:22:05 after 8 failures, followed by suspected data exfiltration to 185.220.101.45 at 10:30.</text>
+
+        <text x="22" y="104" font-size="9" font-weight="700" fill="#CC5500">Timeline</text>
+        <text x="22" y="118" font-size="8" fill="#555">10:22:14 UTC  Wazuh rule 5712 (level 10): SSH brute force confirmed. data.srcip=10.0.2.99</text>
+        <text x="22" y="130" font-size="8" fill="#555">10:22:14 UTC  Sophos IPS: TCP SYN Port Scan signature 18487 from 10.0.2.99</text>
+        <text x="22" y="142" font-size="8" fill="#555">10:22:30 UTC  Sophos Firewall: Allowed SSH connection src=10.0.2.99 dst=10.0.1.10 port=22</text>
+        <text x="22" y="154" font-size="8" fill="#d63b3b" font-weight="700">10:22:35 UTC  Wazuh: SSH login SUCCESS for user "admin" from 10.0.2.99</text>
+        <text x="22" y="166" font-size="8" fill="#d63b3b" font-weight="700">10:30:01 UTC  Sophos Firewall: sent_bytes=98442 from 10.0.1.10 to 185.220.101.45:443</text>
+        <text x="22" y="178" font-size="8" fill="#d63b3b" font-weight="700">10:30:01 UTC  Sophos SSL: sni=evil-domain.example.com cert_issuer="Let's Encrypt"</text>
+
+        <text x="22" y="200" font-size="9" font-weight="700" fill="#CC5500">Evidence Collected</text>
+        <text x="22" y="214" font-size="8" fill="#555">Wazuh alert JSON: rule 5712, alert ID wazuh-2026-0042-a. Exported from OpenSearch.</text>
+        <text x="22" y="226" font-size="8" fill="#555">Sophos flow log export: 10:00-11:00 UTC filtered by src_ip=10.0.2.99 and 10.0.1.10. Attached.</text>
+        <text x="22" y="238" font-size="8" fill="#555">Threat intel: 10.0.2.99 confirmed Tor exit node on AbuseIPDB (score 98/100). Screenshot attached.</text>
+
+        <text x="22" y="258" font-size="9" font-weight="700" fill="#CC5500">Actions Taken</text>
+        <text x="400" y="258" font-size="8" fill="#555">1. Blocked 10.0.2.99 on Sophos at 10:35 UTC.  2. Isolated web-server-01 at 10:36 UTC.  3. Escalated to Tier-2 at 10:37 UTC. Admin creds reset.</text>
+
+      </svg>
+      <div class="diagram-caption">A complete incident ticket. Summary, timeline, evidence, and actions taken are the four mandatory sections. Every timestamp is UTC. Every claim references a specific log entry.</div>
+    </div>
+
+    <h3>Ticket Field Reference</h3>
+    <table class="field-table">
+      <thead><tr><th>Field</th><th>Required Content</th><th>Common Mistakes</th></tr></thead>
+      <tbody>
+        <tr><td>Title</td><td>Attack type + affected asset + date. Example: SSH Brute Force - web-server-01 - 2026-09-20</td><td>Vague titles like "suspicious activity" make searching impossible</td></tr>
+        <tr><td>Priority</td><td>P1=Active compromise. P2=Confirmed attack, contained. P3=Suspicious, investigating. P4=Informational</td><td>Defaulting everything to P2. Calibrate to actual impact.</td></tr>
+        <tr><td>Summary</td><td>One to two sentences. What happened, who did it, what was affected, what action was taken</td><td>Writing a paragraph of background theory instead of the facts</td></tr>
+        <tr><td>Timeline</td><td>Every event in timestamp order, UTC. Source tool, field names, field values for each entry</td><td>Writing "around 10am" instead of exact timestamps from logs</td></tr>
+        <tr><td>Evidence</td><td>List every log source queried. Name specific alert IDs, file attachments, screenshots</td><td>Writing "checked the logs" without specifying which log, which query, which result</td></tr>
+        <tr><td>Actions Taken</td><td>What was blocked, isolated, reset, or escalated. By whom. At what timestamp.</td><td>Leaving this section blank. If you acted, document it.</td></tr>
+        <tr><td>Recommended Remediation</td><td>What needs to happen to fully resolve the root cause. Who owns it.</td><td>Closing tickets without documenting the underlying vulnerability</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>Escalation Decision Tree</h2>
+    <div class="diagram-wrap">
+      <div class="diagram-title">When to Escalate Beyond Tier-1</div>
+      <svg viewBox="0 0 820 200" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+
+        <rect x="280" y="10" width="260" height="35" rx="6" fill="#CC5500"/>
+        <text x="410" y="32" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">New High-Severity Alert</text>
+
+        <line x1="410" y1="45" x2="410" y2="70" stroke="#CC5500" stroke-width="2"/>
+        <rect x="240" y="70" width="340" height="30" rx="5" fill="#fff3e8" stroke="#CC5500" stroke-width="1.5"/>
+        <text x="410" y="90" text-anchor="middle" font-size="9" fill="#555">Did any attack succeed? (login success, 200 on SQLi, exfiltration bytes)</text>
+
+        <line x1="240" y1="85" x2="140" y2="120" stroke="#3aaa3a" stroke-width="2"/>
+        <text x="175" y="108" text-anchor="middle" font-size="8" fill="#3aaa3a">No</text>
+        <rect x="50" y="120" width="180" height="50" rx="5" fill="#f0faf0" stroke="#3aaa3a" stroke-width="1.5"/>
+        <text x="140" y="142" text-anchor="middle" font-size="9" font-weight="700" fill="#2a8a2a">Tier-1 Handle</text>
+        <text x="140" y="158" text-anchor="middle" font-size="8" fill="#555">Block, document, close</text>
+
+        <line x1="580" y1="85" x2="680" y2="120" stroke="#d63b3b" stroke-width="2"/>
+        <text x="645" y="108" text-anchor="middle" font-size="8" fill="#d63b3b">Yes</text>
+        <rect x="590" y="120" width="220" height="50" rx="5" fill="#fef0f0" stroke="#d63b3b" stroke-width="2"/>
+        <text x="700" y="142" text-anchor="middle" font-size="9" font-weight="700" fill="#d63b3b">Escalate to Tier-2</text>
+        <text x="700" y="158" text-anchor="middle" font-size="8" fill="#555">Isolate host. Notify CISO if data breach possible.</text>
+
+      </svg>
+      <div class="diagram-caption">The core escalation question is: did anything succeed? A blocked attack that never got through is Tier-1. A successful login, SQLi response, or exfiltration bytes is always Tier-2.</div>
+    </div>
+  </div>
+
+  <div class="takeaways">
+    <h2>Key Takeaways</h2>
+    <ul>
+      <li>Apply the five-minute triage checklist before touching any tool: read the alert, identify the source, check threat intel, scope the incident, assess severity, decide action.</li>
+      <li>Containment must come before investigation. Block the attacker, isolate affected hosts, and reset credentials before spending time building the full timeline.</li>
+      <li>A professional ticket has four mandatory sections: summary, timeline, evidence, and actions taken. Every claim must reference a specific log entry with a timestamp and field values.</li>
+      <li>The escalation trigger is simple: if the attack succeeded in any form (successful login, SQLi returning data, exfiltration bytes), escalate to Tier-2 and notify CISO if data loss is possible.</li>
+      <li>Close tickets with recommended remediation. An incident that is contained but not remediated will happen again.</li>
+    </ul>
+  </div>
+
+</main>
+<nav class="chapter-nav" style="margin-top:0;">
+  <a class="nav-home" href="index.html">Home</a>
+  <a href="16-bettercap-mitm.html">&larr; Chapter 15</a>
+  <span class="chapter-nav-spacer"></span>
+  <a href="18-capstone.html">Next: Capstone &rarr;</a>
+</nav>
+</body>
+</html>
