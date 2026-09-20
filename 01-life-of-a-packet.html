@@ -59,7 +59,53 @@
   <!-- ============================================================ -->
   <div class="section">
     <h2>What is a Packet?</h2>
-    <p>Imagine you want to send a large book to a friend by post. You cannot fit the whole book in one envelope, so you tear out each page, put each page in its own numbered envelope, and post them all separately. Your friend receives the envelopes in any order, uses the numbers to sort them, and reassembles the book. A packet is the digital equivalent of one of those envelopes.</p>
+    <p>When you send a letter, you write your message on paper, fold it, and seal it inside an envelope. On the outside you write the recipient's address and your own return address. You add a stamp, hand it to the postal service, and the postal service reads the address, routes the envelope through sorting offices, and delivers it to the correct door. The person at the other end opens the envelope and reads the letter inside.</p>
+
+    <p>A network packet works exactly the same way. The table below maps every part of the physical letter to its digital equivalent:</p>
+
+    <table class="field-table">
+      <thead><tr><th>Physical (letter post)</th><th>Digital (network packet)</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>The letter inside the envelope</td>
+          <td>The <strong>payload</strong> - the actual data being sent (part of a file, a web page, a video frame)</td>
+        </tr>
+        <tr>
+          <td>The envelope itself</td>
+          <td>The <strong>packet</strong> - a container that wraps the payload and carries all the addressing information</td>
+        </tr>
+        <tr>
+          <td>The recipient's address on the envelope</td>
+          <td>The <strong>destination IP address</strong> in the packet header - where the packet needs to be delivered</td>
+        </tr>
+        <tr>
+          <td>Your return address on the envelope</td>
+          <td>The <strong>source IP address</strong> in the packet header - where replies should be sent back to</td>
+        </tr>
+        <tr>
+          <td>The stamp</td>
+          <td>The <strong>TTL (Time To Live)</strong> field - a number set by the sender that is decremented by 1 at every router. When it reaches zero the packet is discarded. This prevents a lost or looping packet from circulating on the internet forever.</td>
+        </tr>
+        <tr>
+          <td>The postal sorting office</td>
+          <td>A <strong>router</strong> - reads the destination address and decides which direction to forward the packet next</td>
+        </tr>
+        <tr>
+          <td>The postman's final delivery round</td>
+          <td>The <strong>last-hop network</strong> - the final cable or Wi-Fi link to the destination device</td>
+        </tr>
+        <tr>
+          <td>Opening the envelope and reading the letter</td>
+          <td>The <strong>receiving application</strong> unwrapping the packet and reading the payload</td>
+        </tr>
+        <tr>
+          <td>One letter per envelope, numbered in sequence</td>
+          <td>The <strong>sequence number</strong> in the packet header - used to reassemble packets in the correct order at the destination</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>One important difference from a physical letter: when your computer sends data over a network, that data is usually too large to fit in a single packet. It gets split into many separate packets, each numbered in sequence. Every packet travels independently and may take a different route. At the destination, the sequence numbers are used to put everything back together in the correct order. A packet is one of those numbered envelopes.</p>
 
     <p>When you load a web page, your computer does not send one giant blob of data. It breaks the request into small chunks called <strong>packets</strong>, each typically between 40 and 1500 bytes in size. Each packet travels independently across the network, may take a different route, and is reassembled at the destination. This approach has three major advantages:</p>
 

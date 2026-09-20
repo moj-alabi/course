@@ -70,6 +70,30 @@
 
     <p>The price of all this reliability is overhead. TCP requires a setup handshake before any data is sent, and a teardown sequence when the conversation ends. Every application that needs reliable delivery uses TCP: HTTP, HTTPS, SSH, SMTP, RDP, FTP. Applications that can tolerate some loss and need low latency use UDP instead: DNS queries, video streaming, VoIP.</p>
 
+    <h3>TCP vs UDP: Two Analogies</h3>
+
+    <p><strong>TCP is like sending a parcel by recorded delivery.</strong> When you hand it to the postal service, the clerk scans it and logs the transaction - both sides now agree the parcel has been accepted (this is the TCP handshake). The delivery person gets a signature from the recipient to confirm it arrived. If nobody answers the door, they try again. If the parcel goes missing, you can claim a replacement. You always know whether your item was delivered or not. That confirmation process takes extra time, but you get a guarantee.</p>
+
+    <p>TCP works the same way. Before any data flows, both computers agree to open a connection through the three-way handshake (covered in the next section). Every packet is acknowledged by the receiver. If an acknowledgement does not come back within a timeout, the sender retransmits. Nothing is permanently lost without the sender knowing. This is why every web page load, file download, and email uses TCP - losing part of the data would make the result useless.</p>
+
+    <p><strong>UDP is like delivering flyers through letterboxes.</strong> You print 1,000 flyers and walk down a street pushing them through letterboxes one after another. You do not ring the bell. You do not wait for a response. You do not know if anyone picked the flyer up, threw it away, or was even home. If a letterbox is blocked, you keep walking. You finish the street as fast as possible because speed is the point.</p>
+
+    <p>UDP works the same way. The sender pushes packets out with no handshake, no acknowledgement, and no retransmission. If a packet is lost it is gone. This is the right choice when speed matters more than perfection: a live video call cannot wait for a retransmitted frame from two seconds ago - a momentary pixel glitch is far less disruptive than a one-second freeze. DNS queries use UDP because a single tiny question-and-answer does not need the overhead of a full TCP connection setup.</p>
+
+    <table class="field-table">
+      <thead><tr><th>Property</th><th>TCP (recorded delivery)</th><th>UDP (flyer drop)</th></tr></thead>
+      <tbody>
+        <tr><td>Connection setup</td><td>Three-way handshake before any data</td><td>None - data sent immediately</td></tr>
+        <tr><td>Delivery guarantee</td><td>Yes - receiver sends acknowledgements</td><td>No - sender never finds out if data arrived</td></tr>
+        <tr><td>Retransmission</td><td>Yes - missing packets are re-sent</td><td>No - lost packets are gone</td></tr>
+        <tr><td>Ordering</td><td>Yes - sequence numbers ensure correct order</td><td>No - packets may arrive out of order</td></tr>
+        <tr><td>Speed</td><td>Slower - overhead of handshake and ACKs</td><td>Faster - no setup, no waiting for ACKs</td></tr>
+        <tr><td>Used by</td><td>HTTP, HTTPS, SSH, SMTP, FTP, RDP</td><td>DNS, DHCP, NTP, VoIP, live video, gaming</td></tr>
+        <tr><td>SYN flood attack possible?</td><td>Yes - TCP handshake is the attack surface</td><td>No - there is no handshake to abuse (UDP flood is a different attack)</td></tr>
+        <tr><td>Port scan detectable?</td><td>Yes - SYN packets without completing handshake</td><td>Different signatures apply</td></tr>
+      </tbody>
+    </table>
+
     <div class="callout callout-info">
       <div class="callout-title">Why Layer 4 Matters for Security</div>
       Because TCP requires a handshake before data flows, attackers can abuse this mechanism. A SYN flood sends millions of connection requests without ever completing the handshake, exhausting server resources. A port scanner sends SYN packets to probe which ports are open without completing connections. Both attacks are visible at Layer 4 and are detectable by Sophos IPS and Wazuh. SafeLine WAF (Layer 7) never sees these attacks because they operate below the application layer.
